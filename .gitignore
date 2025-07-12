@@ -1,4 +1,5 @@
 tbgs.db
-tbgs.db-journal
+tbgs.db-shm
+tbgs.db-wal
 .vscode/
 __pycache__/

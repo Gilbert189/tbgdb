@@ -1,5 +1,7 @@
 -- Schema for a blank database. This doesn't purge the database when queried.
 
+pragma journal_mode=WAL;
+
 create table if not exists Users (
 	uid integer primary key,
 	name text,
