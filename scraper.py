@@ -37,6 +37,8 @@ logger.info(f"Logging in as {USERNAME}")
 session = Session()
 session.login(USERNAME, PASSWORD)
 session.make_default()
+# The lxml scraper is much more robust than html.parser.
+parser.parser_config.update(features="lxml")
 
 logger.info(f"Connecting to {DB_FILE}")
 db = sqlite3.connect(DB_FILE)
