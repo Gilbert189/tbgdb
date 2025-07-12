@@ -4,6 +4,7 @@ import sqlite3
 import json
 from pprint import pprint  # noqa
 from collections import defaultdict
+from itertools import chain
 
 from tbgclient import api, Session, Page, Message
 from tbgclient.exceptions import RequestError as TBGRequestError
@@ -135,69 +136,86 @@ def get_bbc(msg_dict):  # noqa
 # - Review phase: pick some random posts to review
 # - User phase: review all the users stored by the scraper
 logger.info("Entering main loop.")
-while True:
-    last_mid = (
-        cursor.execute("select ifnull(max(mid), 1) from Messages")
-        .fetchone()[0]
-    )
-
-    logger.info("Entering discovery phase")
-    update_stats("phases.discovery", datetime.now())
-
-    # The recent posts page has 10 pages
-    for i in range(10):
-        res = api.do_action(
-            session,
-            "recent",
-            params={"start": str(i * 10)},
-            no_percents=True
-        )
-        recent = Page(
-            **parser.parse_page(res.text, parser.parse_search_content),
-            content_type=dict
-        )
-        for msg in recent.contents:
-            get_bbc(msg)
-            update_msg(msg, cursor=cursor)
-            if msg["mid"] <= last_mid:
-                break
-        else:  # No breaks
-            continue
-        break  # passing the previous for's breaks
-
-    logger.info("Entering scan phase")
-    update_stats("phases.scan", datetime.now())
-
-    # better scrape the latest posts first
-    for mid in reversed(range(last_mid, msg["mid"])):
-        # We're only concerned about messages not found by the discover phase,
-        # so skip those which we have already scraped along in the scan phase.
-        result = cursor.execute(
-            "select content from Messages where mid=?",
-            (mid,),
-        ).fetchone()
-        if result is not None:
-            continue
-
-        try:
-            res = api.get_message_page(session, mid)
-        except TBGRequestError:
-            logger.info(f"Cannot scrape mID {mid}, assume deleted")
-            continue
-        topic_page = Page(
-            **parser.parse_page(res.text, parser.parse_topic_content),
-            content_type=dict
+try:
+    while True:
+        last_mid = (
+            cursor.execute("select ifnull(max(mid), 1) from Messages")
+            .fetchone()[0]
         )
 
-        for msg in topic_page.contents:
-            if GREEDY_SCRAPE or msg["mid"] == mid:
+        logger.info("Entering discovery phase")
+        update_stats("phases.discovery", datetime.now())
+
+        # The recent posts page has 10 pages
+        for i in range(10):
+            res = api.do_action(
+                session,
+                "recent",
+                params={"start": str(i * 10)},
+                no_percents=True
+            )
+            recent = Page(
+                **parser.parse_page(res.text, parser.parse_search_content),
+                content_type=dict
+            )
+            for msg in recent.contents:
                 get_bbc(msg)
-            else:
-                # Since we skipped get_bbc from laziness,
-                # this is still in HTML, so better blank it.
-                # We will retrieve it later on the review phase.
-                msg["content"] = None
-            update_msg(msg)
+                update_msg(msg, cursor=cursor)
+                if msg["mid"] <= last_mid:
+                    break
+            else:  # No breaks
+                continue
+            break  # passing the previous for's breaks
 
-    db.commit()  # CAUTION: keep this at the end of the loop!
-    break
+        logger.info("Entering scan phase")
+        update_stats("phases.scan", datetime.now())
+
+        first_mid = (
+            cursor.execute("select ifnull(min(mid), 1) from Messages")
+            .fetchone()[0]
+        )
+
+        # Better scrape the latest posts first.
+        for mid in chain(
+            reversed(range(last_mid, msg["mid"])),
+            # In the case that the scraper is stopped on the first incomplete
+            # scrape, this iterator would scrape the rest of the forum.
+            reversed(range(3, first_mid)),
+            # mID 3 is the very first post that is publicly accessible in the
+            # TBGs.
+        ):
+            # We're only concerned about messages not found by the discover
+            # phase.
+            result = cursor.execute(
+                "select content from Messages where mid=?",
+                (mid,),
+            ).fetchone()
+            if result is not None:
+                continue
+
+            try:
+                res = api.get_message_page(session, mid)
+            except TBGRequestError:
+                logger.info(f"Cannot scrape mID {mid}, assume deleted")
+                continue
+            topic_page = Page(
+                **parser.parse_page(res.text, parser.parse_topic_content),
+                content_type=dict
+            )
+
+            for msg in topic_page.contents:
+                if GREEDY_SCRAPE or msg["mid"] == mid:
+                    get_bbc(msg)
+                else:
+                    # Since we skipped get_bbc from laziness,
+                    # this is still in HTML, so better blank it.
+                    # We will retrieve it later on the review phase.
+                    msg["content"] = None
+                update_msg(msg)
+
+        db.commit()  # CAUTION: keep this at the end of the loop!
+        break
+except Exception:
+    logger.critical("Error caught on main loop!")
+    db.commit()
+    raise
