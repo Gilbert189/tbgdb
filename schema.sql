@@ -3,7 +3,7 @@
 pragma journal_mode=WAL;
 
 create table if not exists Users (
-	uid integer primary key,
+	uid integer primary key not null,
 	name text,
 	avatar text,
 	user_group text,
@@ -18,21 +18,21 @@ create table if not exists Users (
 	gender text,
 	first_scraped datetime,
 	last_scraped datetime
-);
+) without rowid;
 
 create table if not exists Boards (
-	bid integer primary key,
+	bid integer primary key not null,
 	board_name text
-);
+) without rowid;
 
 create table if not exists Topics (
-	tid integer primary key,
+	tid integer primary key not null,
 	topic_name text,
-	bid integer references Boards(tid)
-);
+	bid integer references Boards(bid)
+) without rowid;
 
 create table if not exists Messages (
-	mid integer primary key,
+	mid integer primary key not null,
 	subject text,
 	date datetime,
 	edited datetime,
@@ -43,7 +43,7 @@ create table if not exists Messages (
 	first_scraped datetime default (datetime()),
 	last_scraped datetime,
 	deleted boolean default false
-);
+) without rowid;
 
 create table if not exists Statistics (
 	key text unique,
