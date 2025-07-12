@@ -109,7 +109,7 @@ def update_msg(msg_dict, cursor=None):  # noqa
             "icon": None,
             # ...that would be overwritten by maybe_msg_dict.
             **maybe_msg_dict,
-            "user": maybe_msg_dict["user"]["uid"],
+            "user": maybe_msg_dict.get("user", {}).get("uid", None),
             "now": datetime.now()
         }
     )
