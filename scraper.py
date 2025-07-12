@@ -99,11 +99,16 @@ def update_msg(msg_dict, cursor=None):  # noqa
     maybe_msg_dict = defaultdict(lambda: None)
     maybe_msg_dict.update(msg_dict)
     # This order shouldn't result in a foreign key constraint error.
-    cursor.execute(
-        "insert or replace into Boards (bid, board_name)"
-        " values (:bid, :board_name)",
-        maybe_msg_dict
-    )
+    if maybe_msg_dict["bid"] is not None:
+        # On the scan phase, surrounding posts wouldn't have ["bid"] set,
+        # (unless GREEDY_SCRAPE is set to True) and since we added
+        # NOT NULL constraint to the table, we should add this row only if
+        # that key is set.
+        cursor.execute(
+            "insert or replace into Boards (bid, board_name)"
+            " values (:bid, :board_name)",
+            maybe_msg_dict
+        )
     cursor.execute(
         "insert or replace into Topics (tid, topic_name, bid)"
         " values (:tid, :topic_name, :bid)",
