@@ -5,10 +5,12 @@ import json
 from pprint import pprint  # noqa
 from collections import defaultdict
 from itertools import chain
+from time import sleep
 
 from tbgclient import api, Session, Page, Message
 from tbgclient.exceptions import RequestError as TBGRequestError
 from tbgclient.parsers import forum as parser
+from requests.exceptions import RequestException
 from my_secrets.tbgs import clicky  # change this to something else
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,18 @@ sqlite3.register_adapter(datetime, lambda dt: dt.isoformat(timespec='seconds'))
 sqlite3.register_converter("datetime", lambda dt: datetime.fromisoformat(dt))
 sqlite3.register_adapter(dict, lambda obj: json.dumps(obj))
 sqlite3.register_converter("json", lambda obj: json.loads(obj))
+
+
+def retry_on_error(func):  # noqa
+    """A decorator that recalls a function when a connection error occured."""
+    def wrapper(*args, **kwargs):  # noqa
+        while True:
+            try:
+                return func(*args, **kwargs)
+            except RequestException as e:
+                logger.error(e)
+                sleep(1)
+    return wrapper
 
 
 def update_stats(key, value, cursor=None):  # noqa
@@ -148,7 +162,7 @@ try:
 
         # The recent posts page has 10 pages
         for i in range(10):
-            res = api.do_action(
+            res = retry_on_error(api.do_action)(
                 session,
                 "recent",
                 params={"start": str(i * 10)},
@@ -194,7 +208,7 @@ try:
                 continue
 
             try:
-                res = api.get_message_page(session, mid)
+                res = retry_on_error(api.get_message_page)(session, mid)
             except TBGRequestError:
                 logger.info(f"Cannot scrape mID {mid}, assume deleted")
                 continue
