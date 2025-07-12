@@ -3,7 +3,7 @@
 pragma journal_mode=WAL;
 
 create table if not exists Users (
-	uid integer primary key not null,
+	uid integer primary key,
 	name text,
 	avatar text,
 	user_group text,
@@ -18,7 +18,7 @@ create table if not exists Users (
 	gender text,
 	first_scraped datetime,
 	last_scraped datetime
-) without rowid;
+);
 
 create table if not exists Boards (
 	bid integer primary key not null,
