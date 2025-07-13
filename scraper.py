@@ -80,7 +80,7 @@ def update_user(user_dict, cursor=None):  # noqa
     maybe_user_dict = defaultdict(lambda: None)
     maybe_user_dict.update(user_dict)
     return cursor.execute(
-        "insert or replace into Users ("
+        "insert or ignore into Users ("
         "   uid, name, avatar, user_group, posts, signature, email, blurb,"
         "   location, real_name, social, website, gender, last_scraped"
         ")"
