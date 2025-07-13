@@ -238,5 +238,6 @@ try:
         break
 except Exception:
     logger.critical("Error caught on main loop!")
-    db.commit()
     raise
+finally:
+    db.commit()
