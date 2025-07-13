@@ -142,7 +142,7 @@ def get_bbc(msg_dict):  # noqa
     It also determines if the post is deleted or not."""
     try:
         msg = Message(**msg_dict)
-        msg = msg.update_quotefast()
+        msg = retry_on_error(msg.update_quotefast)()
         msg_dict["content"] = msg.content
     except TBGRequestError:
         logger.info(f"Cannot scrape mID {msg.mid}, assume deleted")
