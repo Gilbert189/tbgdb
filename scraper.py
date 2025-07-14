@@ -146,6 +146,7 @@ def update_msg(msg_dict, cursor=None):  # noqa
             "now": datetime.now()
         }
     )
+    db.commit()
 
 
 def get_bbc(msg_dict):  # noqa
