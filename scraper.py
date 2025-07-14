@@ -116,21 +116,33 @@ def update_msg(msg_dict, cursor=None):  # noqa
     )
     update_user(maybe_msg_dict["user"], cursor=cursor)
     cursor.execute(
-        "insert or replace into Messages ("
+        "insert into Messages ("
         "   mid, subject, date, edited, content, user, icon, tid,"
         "   last_scraped"
         ")"
         " values ("
-        "   :mid, :subject, :date, :edited, :content, :user, :icon, :tid,"
+        "   :mid, :subject, :date, :edited, :content, :uid, :icon, :tid,"
         "   :now"
-        ")",
+        ")"
+        # Some messages passed here may not have some keys set.
+        # This UPSERT statement should prevent them being set with NULL.
+        "on conflict(mid) do update"
+        " set subject=ifnull(excluded.subject, subject),"
+        "     date=ifnull(excluded.date, date),"
+        "     edited=ifnull(excluded.edited, edited),"
+        "     content=ifnull(excluded.content, content),"
+        "     user=ifnull(excluded.user, user),"
+        "     icon=ifnull(excluded.icon, icon),"
+        "     tid=ifnull(excluded.tid, tid),"
+        "     last_scraped=ifnull(excluded.last_scraped, last_scraped)"
+        " where mid=:mid",
         {
             # Default values...
             "edited": None,
             "icon": None,
             # ...that would be overwritten by maybe_msg_dict.
             **maybe_msg_dict,
-            "user": maybe_msg_dict.get("user", {}).get("uid", None),
+            "uid": maybe_msg_dict.get("user", {}).get("uid", None),
             "now": datetime.now()
         }
     )
