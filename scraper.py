@@ -32,7 +32,7 @@ GREEDY_SCRAPE = False
 """When scraping topic pages, setting this to True would scrape the BBC of all
 the messages on the page. Otherwise, it only scrapes the BBC of the message
 the scraper happens to scrape."""
-REVIEW_SIZE = 1000
+REVIEW_SIZE = 0  # temporarily set to 0 for debugging
 """How many posts to scrape in the review phase."""
 
 
@@ -310,6 +310,22 @@ try:
                     # We will retrieve it later on the review phase.
                     msg["content"] = None
                 update_msg(msg)
+
+        logger.info("Entering user phase")
+        update_stats("phases.user", datetime.now())
+
+        # For some reason using the cursor alone doesn't iterate through all
+        # the rows, so I need to use fetchall()
+        for (uid,) in cursor.execute("select uid from Users").fetchall():
+            res = retry_on_error(api.do_action)(
+                session, "profile",
+                params={"u": str(uid)},
+                no_percents=True
+            )
+            parser.check_errors(res.text, res)
+            parsed = parser.parse_profile(res.text)
+
+            update_user(parsed, cursor=cursor)
 
         db.commit()  # CAUTION: keep this at the end of the loop!
         break
