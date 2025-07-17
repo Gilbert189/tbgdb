@@ -24,13 +24,16 @@ PASSWORD = clicky
 "Password of the account used by the scraper."
 RECENT_POWER = 5
 "Multiplier for the most recent posts. Should be no smaller than 1."
-HALF_TIME = timedelta(hours=12)
+HALF_TIME = timedelta(hours=3)
 "Decay time of the recent post multiplier."
 DB_FILE = "tbgs.db"
 "Database to store the scraped data."
 GREEDY_SCRAPE = False
 """When scraping topic pages, setting this to True would scrape the BBC of all
-the pages. """
+the messages on the page. Otherwise, it only scrapes the BBC of the message
+the scraper happens to scrape."""
+REVIEW_SIZE = 1000
+"""How many posts to scrape in the review phase."""
 
 
 logger.info(f"Logging in as {USERNAME}")
@@ -227,6 +230,67 @@ try:
             if result is not None:
                 continue
 
+            try:
+                res = retry_on_error(api.get_message_page)(session, mid)
+            except TBGRequestError:
+                logger.info(f"Cannot scrape mID {mid}, assume deleted")
+                continue
+            topic_page = Page(
+                **parser.parse_page(res.text, parser.parse_topic_content),
+                content_type=dict
+            )
+
+            for msg in topic_page.contents:
+                if GREEDY_SCRAPE or msg["mid"] == mid:
+                    get_bbc(msg)
+                else:
+                    # Since we skipped get_bbc from laziness,
+                    # this is still in HTML, so better blank it.
+                    # We will retrieve it later on the review phase.
+                    msg["content"] = None
+                update_msg(msg)
+
+        logger.info("Entering review phase")
+        update_stats("phases.review", datetime.now())
+        # Pick some random message IDs, weighted by the time posted.
+        # Recent posts has a higher chance of being picked.
+        # The query is based from this SO post:
+        # https://stackoverflow.com/a/56006340
+        # which in turn is based from an algorithm from Efraimidis et al:
+        # https://utopia.duth.gr/~pefraimi/research/data/2007EncOfAlg.pdf
+        query = cursor.execute(
+            # SQLite (at least by itself) doesn't have generate_series like
+            # in PostgreSQL, so this is a viable alternative
+            """
+            with recursive series(x) as (
+                select 3
+                    union all
+                select x+1 from series
+                where x < (select mid from Messages order by mid desc limit 1)
+            )
+            """
+            # divide random() by 2 to prevent integer overflow
+            """
+            select x, 62 - log2(abs(random() / 2)) as priority from series as a
+            left join (
+                select
+                    mid,
+                    62 - log2(abs(random() / 2))
+                    / (pow(2, -(unixepoch() - unixepoch(date)) / :half_time)
+                       * :multiplier + 1) as priority
+                from Messages
+            ) as b
+            on b.mid = a.x
+            order by priority
+            limit :limit;
+            """,
+            {
+                "half_time": HALF_TIME.total_seconds(),
+                "multiplier": RECENT_POWER - 1,
+                "limit": REVIEW_SIZE,
+            }
+        )
+        for mid, _ in query:
             try:
                 res = retry_on_error(api.get_message_page)(session, mid)
             except TBGRequestError:
