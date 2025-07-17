@@ -32,7 +32,7 @@ GREEDY_SCRAPE = False
 """When scraping topic pages, setting this to True would scrape the BBC of all
 the messages on the page. Otherwise, it only scrapes the BBC of the message
 the scraper happens to scrape."""
-REVIEW_SIZE = 0  # temporarily set to 0 for debugging
+REVIEW_SIZE = 1000
 """How many posts to scrape in the review phase."""
 
 
@@ -344,7 +344,6 @@ try:
             db.commit()
 
         db.commit()  # CAUTION: keep this at the end of the loop!
-        break
 except Exception:
     logger.critical("Error caught on main loop!")
     raise
