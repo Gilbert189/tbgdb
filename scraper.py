@@ -83,14 +83,29 @@ def update_user(user_dict, cursor=None):  # noqa
     maybe_user_dict = defaultdict(lambda: None)
     maybe_user_dict.update(user_dict)
     return cursor.execute(
-        "insert or ignore into Users ("
+        "insert into Users ("
         "   uid, name, avatar, user_group, posts, signature, email, blurb,"
         "   location, real_name, social, website, gender, last_scraped"
         ")"
         " values ("
         "   :uid, :name, :avatar, :group, :posts, :signature, :email, :blurb,"
         "   :location, :real_name, :social, :website, :gender, :last_scraped"
-        ")",
+        ")"
+        "on conflict(uid) do update"
+        " set name=ifnull(excluded.name, name),"
+        "     avatar=ifnull(excluded.avatar, avatar),"
+        "     user_group=ifnull(excluded.user_group, user_group),"
+        "     posts=ifnull(excluded.posts, posts),"
+        "     signature=ifnull(excluded.signature, signature),"
+        "     email=ifnull(excluded.email, email),"
+        "     blurb=ifnull(excluded.blurb, blurb),"
+        "     location=ifnull(excluded.location, location),"
+        "     real_name=ifnull(excluded.real_name, real_name),"
+        "     social=ifnull(excluded.social, social),"
+        "     website=ifnull(excluded.website, website),"
+        "     gender=ifnull(excluded.gender, gender),"
+        "     last_scraped=ifnull(excluded.last_scraped, last_scraped)"
+        " where uid=:uid",
         maybe_user_dict
     )
 
