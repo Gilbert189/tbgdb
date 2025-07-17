@@ -326,6 +326,7 @@ try:
             parsed = parser.parse_profile(res.text)
 
             update_user(parsed, cursor=cursor)
+            db.commit()
 
         db.commit()  # CAUTION: keep this at the end of the loop!
         break
