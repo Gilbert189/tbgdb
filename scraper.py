@@ -271,8 +271,7 @@ try:
                 msg["topic_name"] = last_name
                 _second_last_name, second_last_url = topic_page.hierarchy[-2]
                 msg["bid"] = re.search(r"board=(\d+)", second_last_url)[1]
-                if msg["bid"] is not None:
-                    msg["bid"] = int(msg["bid"][1])
+                msg["bid"] = int(msg["bid"])
                 update_msg(msg)
 
         logger.info("Entering review phase")
@@ -336,10 +335,9 @@ try:
                     msg["content"] = None
                 last_name, _last_url = topic_page.hierarchy[-1]
                 msg["topic_name"] = last_name
-                _second_last_name, second_last_url = topic_page.hierarchy[-1]
-                msg["bid"] = re.search(r"board=(\d+)", second_last_url)
-                if msg["bid"] is not None:
-                    msg["bid"] = int(msg["bid"][1])
+                _second_last_name, second_last_url = topic_page.hierarchy[-2]
+                msg["bid"] = re.search(r"board=(\d+)", second_last_url)[1]
+                msg["bid"] = int(msg["bid"])
                 update_msg(msg)
 
         logger.info("Entering user phase")
