@@ -126,12 +126,19 @@ def update_msg(msg_dict, cursor=None):  # noqa
         # that key is set.
         cursor.execute(
             "insert or replace into Boards (bid, board_name)"
-            " values (:bid, :board_name)",
+            " values (:bid, :board_name)"
+            "on conflict(bid) do update"
+            " set board_name=ifnull(excluded.board_name, board_name)"
+            " where bid=:bid",
             maybe_msg_dict
         )
     cursor.execute(
         "insert or replace into Topics (tid, topic_name, bid)"
-        " values (:tid, :topic_name, :bid)",
+        " values (:tid, :topic_name, :bid)"
+        "on conflict(tid) do update"
+        " set topic_name=ifnull(excluded.topic_name, topic_name),"
+        "     bid=ifnull(excluded.bid, bid)"
+        " where tid=:tid",
         maybe_msg_dict
     )
     update_user(maybe_msg_dict["user"], cursor=cursor)
