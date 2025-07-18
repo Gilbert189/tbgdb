@@ -6,6 +6,7 @@ from pprint import pprint  # noqa
 from collections import defaultdict
 from itertools import chain
 from time import sleep
+import re
 
 from tbgclient import api, Session, Page, Message
 from tbgclient.exceptions import RequestError as TBGRequestError
@@ -264,6 +265,14 @@ try:
                     # this is still in HTML, so better blank it.
                     # We will retrieve it later on the review phase.
                     msg["content"] = None
+                # parser.parse_page doesn't output these keys directly,
+                # so we need to retrieve them from the hierarchy
+                last_name, _last_url = topic_page.hierarchy[-1]
+                msg["topic_name"] = last_name
+                _second_last_name, second_last_url = topic_page.hierarchy[-2]
+                msg["bid"] = re.search(r"board=(\d+)", second_last_url)[1]
+                if msg["bid"] is not None:
+                    msg["bid"] = int(msg["bid"][1])
                 update_msg(msg)
 
         logger.info("Entering review phase")
@@ -323,8 +332,14 @@ try:
                 else:
                     # Since we skipped get_bbc from laziness,
                     # this is still in HTML, so better blank it.
-                    # We will retrieve it later on the review phase.
+                    # We will retrieve it later on the next review phase.
                     msg["content"] = None
+                last_name, _last_url = topic_page.hierarchy[-1]
+                msg["topic_name"] = last_name
+                _second_last_name, second_last_url = topic_page.hierarchy[-1]
+                msg["bid"] = re.search(r"board=(\d+)", second_last_url)
+                if msg["bid"] is not None:
+                    msg["bid"] = int(msg["bid"][1])
                 update_msg(msg)
 
         logger.info("Entering user phase")
