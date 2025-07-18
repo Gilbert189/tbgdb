@@ -82,6 +82,7 @@ def update_user(user_dict, cursor=None):  # noqa
         cursor = db.cursor()
     maybe_user_dict = defaultdict(lambda: None)
     maybe_user_dict.update(user_dict)
+    maybe_user_dict["last_scraped"] = datetime.now()
     return cursor.execute(
         "insert into Users ("
         "   uid, name, avatar, user_group, posts, signature, email, blurb,"

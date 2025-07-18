@@ -16,7 +16,7 @@ create table if not exists Users (
 	social json,
 	website text,
 	gender text,
-	first_scraped datetime,
+	first_scraped datetime default (datetime()),
 	last_scraped datetime
 ) without rowid;
 
