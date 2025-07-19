@@ -99,6 +99,9 @@ def update_user(user_dict, cursor=None):  # noqa
     maybe_user_dict = defaultdict(lambda: None)
     maybe_user_dict.update(user_dict)
     maybe_user_dict["last_scraped"] = datetime.now()
+    if maybe_user_dict["uid"] is None:
+        # respect the NOT NULL constraint
+        return cursor
     return execute(
         cursor,
         "insert into Users ("
