@@ -66,11 +66,26 @@ def retry_on_error(func):  # noqa
     return wrapper
 
 
+def execute(cursor, query, arguments=()):  # noqa
+    """Execute a SQL query.
+
+    If an SQLite exception is raised, include a note of the query and the
+    arguments that make it."""
+    try:
+        return cursor.execute(query, arguments)
+    except sqlite3.Error as e:
+        query = re.sub(r"\s+", " ", query)
+        e.add_note(f"Caused by the query {query}")
+        e.add_note(f"with arguments {arguments!r}")
+        raise
+
+
 def update_stats(key, value, cursor=None):  # noqa
     """Updates a value in the Statistics table."""
     if cursor is None:
         cursor = db.cursor()
-    cursor.execute(
+    execute(
+        cursor,
         "insert or replace into Statistics (key, value) values (?, ?)",
         (key, value),
     )
@@ -84,7 +99,8 @@ def update_user(user_dict, cursor=None):  # noqa
     maybe_user_dict = defaultdict(lambda: None)
     maybe_user_dict.update(user_dict)
     maybe_user_dict["last_scraped"] = datetime.now()
-    return cursor.execute(
+    return execute(
+        cursor,
         "insert into Users ("
         "   uid, name, avatar, user_group, posts, signature, email, blurb,"
         "   location, real_name, social, website, gender, last_scraped"
@@ -124,7 +140,8 @@ def update_msg(msg_dict, cursor=None):  # noqa
         # (unless GREEDY_SCRAPE is set to True) and since we added
         # NOT NULL constraint to the table, we should add this row only if
         # that key is set.
-        cursor.execute(
+        execute(
+            cursor,
             "insert or replace into Boards (bid, board_name)"
             " values (:bid, :board_name)"
             "on conflict(bid) do update"
@@ -132,7 +149,8 @@ def update_msg(msg_dict, cursor=None):  # noqa
             " where bid=:bid",
             maybe_msg_dict
         )
-    cursor.execute(
+    execute(
+        cursor,
         "insert or replace into Topics (tid, topic_name, bid)"
         " values (:tid, :topic_name, :bid)"
         "on conflict(tid) do update"
@@ -142,7 +160,8 @@ def update_msg(msg_dict, cursor=None):  # noqa
         maybe_msg_dict
     )
     update_user(maybe_msg_dict["user"], cursor=cursor)
-    cursor.execute(
+    execute(
+        cursor,
         "insert into Messages ("
         "   mid, subject, date, edited, content, user, icon, tid,"
         "   last_scraped"
@@ -200,7 +219,7 @@ logger.info("Entering main loop.")
 try:
     while True:
         last_mid = (
-            cursor.execute("select ifnull(max(mid), 1) from Messages")
+            execute(cursor, "select ifnull(max(mid), 1) from Messages")
             .fetchone()[0]
         )
 
@@ -232,7 +251,7 @@ try:
         update_stats("phases.scan", datetime.now())
 
         first_mid = (
-            cursor.execute("select ifnull(min(mid), 1) from Messages")
+            execute(cursor, "select ifnull(min(mid), 1) from Messages")
             .fetchone()[0]
         )
 
@@ -247,7 +266,8 @@ try:
         ):
             # We're only concerned about messages not found by the discover
             # phase.
-            result = cursor.execute(
+            result = execute(
+                cursor,
                 "select content from Messages where mid=?",
                 (mid,),
             ).fetchone()
@@ -289,7 +309,8 @@ try:
         # https://stackoverflow.com/a/56006340
         # which in turn is based from an algorithm from Efraimidis et al:
         # https://utopia.duth.gr/~pefraimi/research/data/2007EncOfAlg.pdf
-        query = cursor.execute(
+        query = execute(
+            cursor,
             # SQLite (at least by itself) doesn't have generate_series like
             # in PostgreSQL, so this is a viable alternative
             """
@@ -352,7 +373,7 @@ try:
 
         # For some reason using the cursor alone doesn't iterate through all
         # the rows, so I need to use fetchall()
-        for (uid,) in cursor.execute("select uid from Users").fetchall():
+        for (uid,) in execute(cursor, "select uid from Users").fetchall():
             res = retry_on_error(api.do_action)(
                 session, "profile",
                 params={"u": str(uid)},
