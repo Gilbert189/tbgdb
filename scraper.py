@@ -4,7 +4,7 @@ import sqlite3
 import json
 from pprint import pprint  # noqa
 from collections import defaultdict
-from itertools import chain
+from itertools import chain, count
 from time import sleep
 import re
 
@@ -34,7 +34,9 @@ GREEDY_SCRAPE = False
 the messages on the page. Otherwise, it only scrapes the BBC of the message
 the scraper happens to scrape."""
 REVIEW_SIZE = 1000
-"""How many posts to scrape in the review phase."""
+"How many posts to scrape in the review phase."
+USER_PHASE_EVERY = 10
+"Do the user phase every this many cycles."
 
 
 logger.info(f"Logging in as {USERNAME}")
@@ -218,9 +220,10 @@ def get_bbc(msg_dict):  # noqa
 # - Scan phase: scrape the posts potentially missed by the last phase
 # - Review phase: pick some random posts to review
 # - User phase: review all the users stored by the scraper
+# These 4 phases are then repeated over and over.
 logger.info("Entering main loop.")
 try:
-    while True:
+    for cycle in count():
         last_mid = (
             execute(cursor, "select ifnull(max(mid), 1) from Messages")
             .fetchone()[0]
@@ -371,22 +374,23 @@ try:
                 msg["bid"] = int(msg["bid"])
                 update_msg(msg)
 
-        logger.info("Entering user phase")
-        update_stats("phases.user", datetime.now())
+        if cycle % USER_PHASE_EVERY == 0:
+            logger.info("Entering user phase")
+            update_stats("phases.user", datetime.now())
 
-        # For some reason using the cursor alone doesn't iterate through all
-        # the rows, so I need to use fetchall()
-        for (uid,) in execute(cursor, "select uid from Users").fetchall():
-            res = retry_on_error(api.do_action)(
-                session, "profile",
-                params={"u": str(uid)},
-                no_percents=True
-            )
-            parser.check_errors(res.text, res)
-            parsed = parser.parse_profile(res.text)
+            # For some reason using the cursor alone doesn't iterate through
+            # all the rows, so I need to use fetchall()
+            for (uid,) in execute(cursor, "select uid from Users").fetchall():
+                res = retry_on_error(api.do_action)(
+                    session, "profile",
+                    params={"u": str(uid)},
+                    no_percents=True
+                )
+                parser.check_errors(res.text, res)
+                parsed = parser.parse_profile(res.text)
 
-            update_user(parsed, cursor=cursor)
-            db.commit()
+                update_user(parsed, cursor=cursor)
+                db.commit()
 
         db.commit()  # CAUTION: keep this at the end of the loop!
 except Exception:
