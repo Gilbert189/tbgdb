@@ -4,7 +4,7 @@ import json
 import logging
 import re
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, url_for, make_response
 
 api = Blueprint("api", __name__)
 logger = logging.getLogger(__name__)
@@ -77,6 +77,8 @@ end;
 insert into TopicFTS (TopicFTS) values ('rebuild');
 """)  # noqa
 
+uptime = datetime.now()
+
 
 @api.route("/post/<mid>")
 @api.route("/message/<mid>")
@@ -145,7 +147,7 @@ def search_messages():  # noqa
 
 
 @api.route("/search/topics")
-def search_topic():  # noqa
+def search_topics():  # noqa
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
 
@@ -185,6 +187,42 @@ def statistics():  # noqa
 
     res = jsonify(query)
     return res
+
+
+@api.route("/about")
+def about():  # noqa
+    about_text = f"""
+This is an API for TBGDB, a screen-scraper suite for the Text Based Games \
+Forums (hereafter called "TBGs").
+
+Here you can access messages, topics, and users that TBGDB has scraped. \
+See the "urls" key on {url_for('.hello')} for examples.
+
+Data scraped by TBGDB are property of their respective authors. Please \
+respect their rights.
+    """.strip()
+    # You may modify this about text.
+    res = make_response(about_text)
+    res.content_type = "text/plain"
+    return res
+
+
+@api.route("/")
+def hello():  # noqa
+    return {
+        "hello": "world",
+        "uptime": uptime.isoformat(),
+        "urls": {
+            "about": url_for(".about"),
+            "get_message": url_for(".get_message", mid="$mid"),
+            "get_topic": url_for(".get_topic", tid="$tid"),
+            "search_messages": url_for(".search_messages",
+                                       contents="...",
+                                       subject="..."),
+            "search_topics": url_for(".search_topics",
+                                     topic_name="..."),
+        },
+    }
 
 
 def create_app():  # noqa
