@@ -161,7 +161,6 @@ def search_topics():  # noqa
             args
         )
         query = query.fetchall()
-        print(query)
     except sqlite3.Error as e:
         return {type(e).__name__: str(e)}, 400
 
@@ -227,5 +226,4 @@ def create_app():  # noqa
     with app.app_context():
         build_fts()
 
-    print(app.blueprints)
     return app
