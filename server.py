@@ -1,13 +1,11 @@
 import sqlite3
 from datetime import datetime
 import json
-import logging
 import re
 
-from flask import Blueprint, request, url_for, make_response
+from flask import Blueprint, request, url_for, make_response, current_app
 
 api = Blueprint("api", __name__)
-logger = logging.getLogger(__name__)
 
 
 # Here is the configuration for the API server.
@@ -26,8 +24,10 @@ def dict_factory(cursor, row):  # noqa
     return {key: value for key, value in zip(fields, row)}
 db.row_factory = dict_factory # noqa
 
-logger.info("Building FTS tables")
-db.executescript("""
+
+def build_fts():  # noqa
+    current_app.logger.info("Building FTS tables")
+    db.executescript("""
 -- HACK: need to use a view since we're storing the FTS table temporarily
 -- and using the tables direcly doesn't work
 create view if not exists temp.MessageView as
@@ -75,7 +75,8 @@ create temporary trigger TopicFTS_update after update on Topics begin
         values (new.tid, new.tid, new.topic_name, new.bid);
 end;
 insert into TopicFTS (TopicFTS) values ('rebuild');
-""")  # noqa
+    """)  # noqa
+
 
 uptime = datetime.now()
 
@@ -223,4 +224,8 @@ def create_app():  # noqa
 
     app.register_blueprint(api)
 
+    with app.app_context():
+        build_fts()
+
+    print(app.blueprints)
     return app
