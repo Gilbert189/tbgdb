@@ -4,7 +4,7 @@ import json
 import logging
 import re
 
-from flask import Blueprint, jsonify, request, url_for, make_response
+from flask import Blueprint, request, url_for, make_response
 
 api = Blueprint("api", __name__)
 logger = logging.getLogger(__name__)
@@ -87,10 +87,9 @@ def get_message(mid):  # noqa
     query = cur.execute("select * from Messages where mid=?", (mid,))
     query = query.fetchone()
 
-    res = jsonify(query)
     if query is None:
-        res.status_code = 404
-    return res
+        return query, 404
+    return query
 
 
 @api.route("/user/<uid>")
@@ -99,10 +98,9 @@ def get_user(uid):  # noqa
     query = cur.execute("select * from Users where uid=?", (uid,))
     query = query.fetchone()
 
-    res = jsonify(query)
     if query is None:
-        res.status_code = 404
-    return res
+        return query, 404
+    return query
 
 
 @api.route("/topic/<tid>")
@@ -111,10 +109,9 @@ def get_topic(tid):  # noqa
     query = cur.execute("select * from Topics where tid=?", (tid,))
     query = query.fetchone()
 
-    res = jsonify(query)
     if query is None:
-        res.status_code = 404
-    return res
+        return query, 404
+    return query
 
 
 @api.route("/search/messages")
@@ -124,6 +121,7 @@ def search_messages():  # noqa
 
     args = request.args.to_dict()
     cur = db.cursor()
+    status_code = 200
     try:
         query = cur.execute(
             "select * from MessageFTS where "
@@ -136,14 +134,11 @@ def search_messages():  # noqa
         )
         query = query.fetchall()
     except sqlite3.Error as e:
-        res = jsonify({type(e).__name__: str(e)})
-        res.status_code = 400
-        return res
+        return {type(e).__name__: str(e)}, 400
 
-    res = jsonify(query)
     if query == []:
-        res.status_code = 404
-    return res
+        status_code = 404
+    return query, status_code
 
 
 @api.route("/search/topics")
@@ -153,6 +148,7 @@ def search_topics():  # noqa
 
     args = request.args.to_dict()
     cur = db.cursor()
+    status_code = 200
     try:
         query = cur.execute(
             "select * from TopicFTS where "
@@ -166,14 +162,11 @@ def search_topics():  # noqa
         query = query.fetchall()
         print(query)
     except sqlite3.Error as e:
-        res = jsonify({type(e).__name__: str(e)})
-        res.status_code = 400
-        return res
+        return {type(e).__name__: str(e)}, 400
 
-    res = jsonify(query)
     if query == []:
-        res.status_code = 404
-    return res
+        status_code = 404
+    return query, status_code
 
 
 @api.route("/stats")
@@ -185,8 +178,7 @@ def statistics():  # noqa
     query = cur.execute("select key, value from Statistics")
     query = {pair["key"]: pair["value"] for pair in query.fetchall()}
 
-    res = jsonify(query)
-    return res
+    return query
 
 
 @api.route("/about")
