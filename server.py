@@ -121,6 +121,9 @@ def search_messages():  # noqa
         return re.sub(r"\W", "_", x)
 
     args = request.args.to_dict()
+    if len(args) == 0:
+        return {"ValueError": "at least a query is required"}
+
     cur = db.cursor()
     status_code = 200
     try:
@@ -148,6 +151,9 @@ def search_topics():  # noqa
         return re.sub(r"\W", "_", x)
 
     args = request.args.to_dict()
+    if len(args) == 0:
+        return {"ValueError": "at least a query string is required"}
+
     cur = db.cursor()
     status_code = 200
     try:
