@@ -47,7 +47,7 @@ def build_fts(force_rebuild=False):  # noqa
     current_app.logger.info("Building FTS tables")
     db.executescript("""
 create view if not exists MessageView as
-    select subject, content, name as username, topic_name, board_name
+    select mid, subject, content, name as username, topic_name, board_name
     from Messages
         join Topics using (tid)
         join Boards using (bid)
