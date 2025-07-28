@@ -46,18 +46,18 @@ def build_fts(force_rebuild=False):  # noqa
 
     current_app.logger.info("Building FTS tables")
     db.executescript("""
-create view MessageView as
+create view if not exists MessageView as
     select subject, content, name as username, topic_name, board_name
     from Messages
         join Topics using (tid)
         join Boards using (bid)
         join Users on Messages.user=Users.uid;
-create virtual table MessageFTS using fts5(
+create virtual table if not exists MessageFTS using fts5(
     subject, content, username, topic_name, board_name,
     content=MessageView,
     content_rowid=mid
 );
-create trigger MessageFTS_insert after insert on Messages begin
+create trigger if not exists MessageFTS_insert after insert on Messages begin
     insert into MessageFTS
         (rowid, subject, content, username, topic_name, board_name)
     values (
@@ -70,7 +70,7 @@ create trigger MessageFTS_insert after insert on Messages begin
             where tid=new.tid)
     );
 end;
-create trigger MessageFTS_delete after delete on Messages begin
+create trigger if not exists MessageFTS_delete after delete on Messages begin
     insert into MessageFTS
         (MessageFTS, rowid, subject, content, username, topic_name, board_name)
     values (
@@ -83,7 +83,7 @@ create trigger MessageFTS_delete after delete on Messages begin
             where tid=old.tid)
     );
 end;
-create trigger MessageFTS_update after update on Messages begin
+create trigger if not exists MessageFTS_update after update on Messages begin
     insert into MessageFTS
         (MessageFTS, rowid, subject, content, username, topic_name, board_name)
         values (
@@ -109,24 +109,24 @@ create trigger MessageFTS_update after update on Messages begin
 end;
 insert into MessageFTS (MessageFTS) values ('rebuild');
 
-create view TopicView as
+create view if not exists TopicView as
     select tid, topic_name, board_name
     from Topics
         full join Boards using (bid);
-create virtual table TopicFTS using fts5(
+create virtual table if not exists TopicFTS using fts5(
     topic_name, bid,
     content=TopicView,
     content_rowid=tid
 );
-create trigger TopicFTS_insert after insert on Topics begin
+create trigger if not exists TopicFTS_insert after insert on Topics begin
     insert into TopicFTS (rowid, topic_name, board_name)
         values (new.tid, new.topic_name, new.bid);
 end;
-create trigger TopicFTS_delete after delete on Topics begin
+create trigger if not exists TopicFTS_delete after delete on Topics begin
     insert into TopicFTS (TopicFTS, rowid, topic_name, bid)
         values ('delete', old.tid, old.topic_name, old.bid);
 end;
-create trigger TopicFTS_update after update on Topics begin
+create trigger if not exists TopicFTS_update after update on Topics begin
     insert into TopicFTS (TopicFTS, rowid, topic_name, bid)
         values ('delete', old.tid, old.topic_name, old.bid);
     insert into TopicFTS (rowid, topic_name, bid)
