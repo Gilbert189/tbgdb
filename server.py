@@ -67,7 +67,7 @@ create trigger MessageFTS_insert after insert on Messages begin
         (select board_name
             from Boards
                 join Topics using (bid)
-            where tid=new.tid),
+            where tid=new.tid)
     );
 end;
 create trigger MessageFTS_delete after delete on Messages begin
@@ -80,7 +80,7 @@ create trigger MessageFTS_delete after delete on Messages begin
         (select board_name
             from Boards
                 join Topics using (bid)
-            where tid=old.tid),
+            where tid=old.tid)
     );
 end;
 create trigger MessageFTS_update after update on Messages begin
@@ -93,7 +93,7 @@ create trigger MessageFTS_update after update on Messages begin
             (select board_name
                 from Boards
                     join Topics using (bid)
-                where tid=old.tid),
+                where tid=old.tid)
         );
     insert into MessageFTS
         (rowid, subject, content, username, topic_name, board_name)
@@ -104,7 +104,7 @@ create trigger MessageFTS_update after update on Messages begin
             (select board_name
                 from Boards
                     join Topics using (bid)
-                where tid=new.tid),
+                where tid=new.tid)
         );
 end;
 insert into MessageFTS (MessageFTS) values ('rebuild');
