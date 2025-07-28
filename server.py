@@ -173,6 +173,18 @@ def get_topic(tid):  # noqa
     return query
 
 
+@api.route("/forum/<bid>")
+@api.route("/board/<bid>")
+def get_board(bid):  # noqa
+    cur = db.cursor()
+    query = cur.execute("select * from Boards where bid=?", (bid,))
+    query = query.fetchone()
+
+    if query is None:
+        return query, 404
+    return query
+
+
 @api.route("/topic/<tid>/posts")
 @api.route("/topic/<tid>/messages")
 def get_topic_messages(tid):  # noqa
