@@ -328,11 +328,12 @@ def create_app():  # noqa
     from flask import Flask
     app = Flask(__name__)
 
-    app.register_blueprint(api)
-
     with app.app_context():
         if "db" not in g:
             g.db = db
         build_fts()
+        import mostpan_ext  # noqa
+
+    app.register_blueprint(api)
 
     return app
