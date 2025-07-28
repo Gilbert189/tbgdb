@@ -227,21 +227,16 @@ def search_messages():  # noqa
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
 
-    args = request.args.to_dict()
+    args = request.args.to_dict().get("q", "")
     if len(args) == 0:
-        return {"ValueError": "at least a query is required"}
+        return {"ValueError": "at least a query is required"}, 400
 
     cur = db.cursor()
     status_code = 200
     try:
         query = cur.execute(
-            "select * from MessageFTS where "
-            # very risky...
-            + " and ".join(
-                f"{x} match :{x}"
-                for x in map(sanitize, args.keys())
-            ),
-            args
+            "select rowid as mid, * from MessageFTS(?)",
+            (args,)
         )
         query = query.fetchall()
     except sqlite3.Error as e:
@@ -257,21 +252,16 @@ def search_topics():  # noqa
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
 
-    args = request.args.to_dict()
+    args = request.args.to_dict().get("q", "")
     if len(args) == 0:
-        return {"ValueError": "at least a query string is required"}
+        return {"ValueError": "at least a query is required"}, 400
 
     cur = db.cursor()
     status_code = 200
     try:
         query = cur.execute(
-            "select * from TopicFTS where "
-            # very risky...
-            + " and ".join(
-                f"{x} match :{x}"
-                for x in map(sanitize, args.keys())
-            ),
-            args
+            "select rowid as tid, * from TopicFTS(?)",
+            (args,)
         )
         query = query.fetchall()
     except sqlite3.Error as e:
@@ -321,11 +311,15 @@ def hello():  # noqa
             "about": url_for(".about"),
             "get_message": url_for(".get_message", mid="$mid"),
             "get_topic": url_for(".get_topic", tid="$tid"),
+            "get_board": url_for(".get_board", bid="$bid"),
             "search_messages": url_for(".search_messages",
-                                       contents="...",
-                                       subject="..."),
+                                       q="content:..."),
             "search_topics": url_for(".search_topics",
-                                     topic_name="..."),
+                                     q="content:..."),
+            "get_messages_on_topic":
+                url_for(".get_topic_messages", tid="$tid"),
+            "get_topics_on_board":
+                url_for(".get_board_topics", bid="$bid"),
         },
     }
 
