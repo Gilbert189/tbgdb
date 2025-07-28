@@ -3,7 +3,7 @@ from datetime import datetime
 import json
 import re
 
-from flask import Blueprint, request, url_for, make_response, current_app
+from flask import Blueprint, request, url_for, make_response, current_app, g
 
 api = Blueprint("api", __name__)
 
@@ -288,7 +288,7 @@ def statistics():  # noqa
 def about():  # noqa
     about_text = f"""
 This is an API for TBGDB, a screen-scraper suite for the Text Based Games \
-Forums (hereafter called "TBGs").
+Forums.
 
 Here you can access messages, topics, and users that TBGDB has scraped. \
 See the "urls" key on {url_for('.hello')} for examples.
@@ -331,6 +331,8 @@ def create_app():  # noqa
     app.register_blueprint(api)
 
     with app.app_context():
+        if "db" not in g:
+            g.db = db
         build_fts()
 
     return app
