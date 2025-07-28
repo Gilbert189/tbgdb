@@ -30,8 +30,8 @@ def build_fts(force_rebuild=False):  # noqa
     if not force_rebuild:
         cur = db.cursor()
         tables = {
-            table
-            for (table,) in cur.execute("select name from sqlite_master")
+            row["name"]
+            for row in cur.execute("select name from sqlite_master").fetchall()
         }
         required_tables = (
             {"MessageView", "TopicView"}
@@ -42,6 +42,7 @@ def build_fts(force_rebuild=False):  # noqa
             }
         )
         if tables > required_tables:
+            current_app.logger.info("FTS tables exists, not building again.")
             return
 
     current_app.logger.info("Building FTS tables")
