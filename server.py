@@ -173,6 +173,21 @@ def get_topic(tid):  # noqa
     return query
 
 
+@api.route("/topic/<tid>/posts")
+@api.route("/topic/<tid>/messages")
+def get_topic_messages(tid):  # noqa
+    cur = db.cursor()
+    query = cur.execute(
+        "select * from Messages where tid=? order by mid asc",
+        (tid,)
+    )
+    query = query.fetchall()
+
+    if query == []:
+        return query, 404
+    return query
+
+
 @api.route("/search/messages")
 def search_messages():  # noqa
     def sanitize(x):  # noqa
