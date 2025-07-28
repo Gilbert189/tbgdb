@@ -19,63 +19,121 @@ sqlite3.register_converter("datetime", lambda dt: datetime.fromisoformat(dt))
 sqlite3.register_adapter(dict, lambda obj: json.dumps(obj))
 sqlite3.register_converter("json", lambda obj: json.loads(obj))
 
+
 def dict_factory(cursor, row):  # noqa
     fields = [column[0] for column in cursor.description]
     return {key: value for key, value in zip(fields, row)}
 db.row_factory = dict_factory # noqa
 
 
-def build_fts():  # noqa
+def build_fts(force_rebuild=False):  # noqa
+    if not force_rebuild:
+        cur = db.cursor()
+        tables = {
+            table
+            for (table,) in cur.execute("select name from sqlite_master")
+        }
+        required_tables = (
+            {"MessageView", "TopicView"}
+            | {
+                table + trigger
+                for table in ["MessageFTS", "TopicFTS"]
+                for trigger in ["", "_insert", "_update", "_delete"]
+            }
+        )
+        if tables > required_tables:
+            return
+
     current_app.logger.info("Building FTS tables")
     db.executescript("""
--- HACK: need to use a view since we're storing the FTS table temporarily
--- and using the tables direcly doesn't work
-create view if not exists temp.MessageView as
-    select mid, subject, content, user from Messages;
-create virtual table temp.MessageFTS using fts5(
-    mid, subject, content, user,
+create view MessageView as
+    select subject, content, name as username, topic_name, board_name
+    from Messages
+        join Topics using (tid)
+        join Boards using (bid)
+        join Users on Messages.user=Users.uid;
+create virtual table MessageFTS using fts5(
+    subject, content, username, topic_name, board_name,
     content=MessageView,
     content_rowid=mid
 );
-create temporary trigger MessageFTS_insert after insert on Messages begin
-    insert into MessageFTS (rowid, mid, subject, content, user)
-        values (new.mid, new.mid, new.subject, new.content, new.user);
+create trigger MessageFTS_insert after insert on Messages begin
+    insert into MessageFTS
+        (rowid, subject, content, username, topic_name, board_name)
+    values (
+        new.mid, new.subject, new.content,
+        (select name from Users where uid=new.user),
+        (select topic_name from Topics where tid=new.tid),
+        (select board_name
+            from Boards
+                join Topics using (bid)
+            where tid=new.tid),
+    );
 end;
-create temporary trigger MessageFTS_delete after delete on Messages begin
-    insert into MessageFTS (MessageFTS, rowid, mid, subject, content, user)
-        values ('delete', old.mid, old.mid, old.subject, old.content, old.user);
+create trigger MessageFTS_delete after delete on Messages begin
+    insert into MessageFTS
+        (MessageFTS, rowid, subject, content, username, topic_name, board_name)
+    values (
+        'delete', old.mid, old.subject, old.content,
+        (select name from Users where uid=old.user),
+        (select topic_name from Topics where tid=old.tid),
+        (select board_name
+            from Boards
+                join Topics using (bid)
+            where tid=old.tid),
+    );
 end;
-create temporary trigger MessageFTS_update after update on Messages begin
-    insert into MessageFTS (MessageFTS, rowid, mid, subject, content, user)
-        values ('delete', old.mid, old.mid, old.subject, old.content, old.user);
-    insert into MessageFTS (rowid, mid, subject, content, user)
-        values (new.mid, new.mid, new.subject, new.content, new.user);
+create trigger MessageFTS_update after update on Messages begin
+    insert into MessageFTS
+        (MessageFTS, rowid, subject, content, username, topic_name, board_name)
+        values (
+            'delete', old.mid, old.subject, old.content,
+            (select name from Users where uid=old.user),
+            (select topic_name from Topics where tid=old.tid),
+            (select board_name
+                from Boards
+                    join Topics using (bid)
+                where tid=old.tid),
+        );
+    insert into MessageFTS
+        (rowid, subject, content, username, topic_name, board_name)
+        values (
+            new.mid, new.subject, new.content,
+            (select name from Users where uid=new.user),
+            (select topic_name from Topics where tid=new.tid),
+            (select board_name
+                from Boards
+                    join Topics using (bid)
+                where tid=new.tid),
+        );
 end;
 insert into MessageFTS (MessageFTS) values ('rebuild');
 
-create view if not exists temp.TopicView as
-    select tid, topic_name, bid from Topics;
-create virtual table temp.TopicFTS using fts5(
-    tid, topic_name, bid,
+create view TopicView as
+    select tid, topic_name, board_name
+    from Topics
+        full join Boards using (bid);
+create virtual table TopicFTS using fts5(
+    topic_name, bid,
     content=TopicView,
     content_rowid=tid
 );
-create temporary trigger TopicFTS_insert after insert on Topics begin
-    insert into TopicFTS (rowid, tid, topic_name, bid)
-        values (new.tid, new.tid, new.topic_name, new.bid);
+create trigger TopicFTS_insert after insert on Topics begin
+    insert into TopicFTS (rowid, topic_name, board_name)
+        values (new.tid, new.topic_name, new.bid);
 end;
-create temporary trigger TopicFTS_delete after delete on Topics begin
-    insert into TopicFTS (TopicFTS, rowid, tid, topic_name, bid)
-        values ('delete', old.tid, old.tid, old.topic_name, old.bid);
+create trigger TopicFTS_delete after delete on Topics begin
+    insert into TopicFTS (TopicFTS, rowid, topic_name, bid)
+        values ('delete', old.tid, old.topic_name, old.bid);
 end;
-create temporary trigger TopicFTS_update after update on Topics begin
-    insert into TopicFTS (TopicFTS, rowid, tid, topic_name, bid)
-        values ('delete', old.tid, old.tid, old.topic_name, old.bid);
-    insert into TopicFTS (rowid, tid, topic_name, bid)
-        values (new.tid, new.tid, new.topic_name, new.bid);
+create trigger TopicFTS_update after update on Topics begin
+    insert into TopicFTS (TopicFTS, rowid, topic_name, bid)
+        values ('delete', old.tid, old.topic_name, old.bid);
+    insert into TopicFTS (rowid, topic_name, bid)
+        values (new.tid, new.topic_name, new.bid);
 end;
 insert into TopicFTS (TopicFTS) values ('rebuild');
-    """)  # noqa
+    """)
 
 
 uptime = datetime.now()
