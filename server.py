@@ -201,6 +201,27 @@ def get_topic_messages(tid):  # noqa
     return query
 
 
+@api.route("/forum/<bid>/topics")
+@api.route("/board/<bid>/topics")
+def get_board_topics(bid):  # noqa
+    cur = db.cursor()
+    query = cur.execute(
+        """
+        select tid, topic_name, max(mid) as latest_post
+        from Topics
+            join Messages using (tid)
+        where bid=?
+        group by tid
+        order by latest_post desc""",
+        (bid,)
+    )
+    query = query.fetchall()
+
+    if query == []:
+        return query, 404
+    return query
+
+
 @api.route("/search/messages")
 def search_messages():  # noqa
     def sanitize(x):  # noqa
