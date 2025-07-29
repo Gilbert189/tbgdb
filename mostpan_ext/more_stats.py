@@ -112,6 +112,28 @@ if api is not None:
         except sqlite3.Error as e:
             return {type(e).__name__: str(e)}, 422
 
+    @stats_api.route("/complete")
+    def completeness():  # noqa
+        cur = db.cursor()
+        return {
+            "message": cur.execute(
+                """
+                select
+                    (1.0 * count(content) / count(*)) as filled_content,
+                    (1.0 * count(*) / max(mid)) as existing_posts
+                from Messages
+                """
+            ).fetchone(),
+            "topic": cur.execute(
+                """
+                select
+                    (1.0 * count(topic_name) / count(*)) as filled_names,
+                    (1.0 * count(*) / max(tid)) as existing_topics
+                from Topics
+                """
+            ).fetchone(),
+        }
+
     current_app.config.other_api_examples.update({
         "message_counts_over_time":
         partial(url_for,
