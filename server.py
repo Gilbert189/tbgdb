@@ -320,6 +320,10 @@ def hello():  # noqa
                 url_for(".get_topic_messages", tid="$tid"),
             "get_topics_on_board":
                 url_for(".get_board_topics", bid="$bid"),
+            **{
+                k: v()
+                for k, v in current_app.config.other_api_examples.items()
+            }
         },
     }
 
@@ -331,6 +335,10 @@ def create_app():  # noqa
     with app.app_context():
         if "db" not in g:
             g.db = db
+        g.blueprints = {
+            "api": api
+        }
+        app.config.other_api_examples = {}
         build_fts()
         import mostpan_ext  # noqa
 

@@ -4,19 +4,19 @@ Serves more statistics of the TBGDB's data, mostly in chart form.
 Matplotlib is required to create the charts.
 """
 
-from flask import current_app, Blueprint, g, request
+from flask import current_app, Blueprint, g, request, url_for
 from io import BytesIO
 from datetime import datetime, timedelta
 import sqlite3
+from functools import partial
 
 
 logger = current_app.logger.getChild("more_stats")
 
 
-api = current_app.blueprints.get("api", None)
+api = g.blueprints.get("api", None)
 if api is not None:
-    stats_api = Blueprint('stats_api', __name__)
-    api.register_blueprint(stats_api, path="/")
+    stats_api = Blueprint('stats', __name__)
 
     @stats_api.route("/counts/<sample>")
     def message_count(sample):  # noqa
@@ -92,3 +92,17 @@ if api is not None:
             return query
         except (ValueError, sqlite3.Error) as e:
             return {type(e).__name__: str(e)}, 400
+
+    current_app.config.other_api_examples.update({
+        "message_counts_over_time":
+        partial(url_for,
+                "api.stats.message_count",
+                sample="'hourly,daily,weekly,monthly'",
+                user="...",
+                topic="...",
+                board="...",
+                start="ISOdate...",
+                end="ISOdate...")
+    })
+
+    api.register_blueprint(stats_api, path="/")
