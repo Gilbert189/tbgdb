@@ -28,15 +28,15 @@ if api is not None:
         }
         range_limit = {
             "hourly": timedelta(weeks=1),
-            "daily": timedelta(months=6),
-            "weekly": timedelta(years=3),
-            "monthly": timedelta(years=20),
+            "daily": timedelta(weeks=24),
+            "weekly": timedelta(weeks=120),
+            "monthly": timedelta(weeks=600),
         }
         default_range = {
             "hourly": timedelta(days=1),
-            "daily": timedelta(months=1),
-            "weekly": timedelta(months=3),
-            "monthly": timedelta(years=1),
+            "daily": timedelta(weeks=4),
+            "weekly": timedelta(weeks=24),
+            "monthly": timedelta(weeks=50),
         }
         try:
             if sample not in date_formats:
@@ -74,7 +74,7 @@ if api is not None:
                 f" and unixepoch(date) < {end_range.timestamp()}"
             )
 
-            cur = g.db.cursor()
+            cur = current_app.config.db.cursor()
             query = cur.execute(
                 f"""
                 select strftime(:datefmt, date) as time, count(*)

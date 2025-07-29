@@ -333,8 +333,7 @@ def create_app():  # noqa
     app = Flask(__name__)
 
     with app.app_context():
-        if "db" not in g:
-            g.db = db
+        app.config.db = db  # please don't scream at me
         g.blueprints = {
             "api": api
         }
