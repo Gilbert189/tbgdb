@@ -13,11 +13,19 @@ DB_FILE = "tbgs.db"
 "Database to store the scraped data."
 
 
-db = sqlite3.connect(DB_FILE, check_same_thread=False)
-sqlite3.register_adapter(datetime, lambda dt: dt.isoformat(timespec='seconds'))
-sqlite3.register_converter("datetime", lambda dt: datetime.fromisoformat(dt))
-sqlite3.register_adapter(dict, lambda obj: json.dumps(obj))
-sqlite3.register_converter("json", lambda obj: json.loads(obj))
+db = sqlite3.connect(
+    DB_FILE,
+    check_same_thread=False,
+    detect_types=sqlite3.PARSE_DECLTYPES
+)
+sqlite3.register_adapter(datetime,
+                         lambda dt: dt.isoformat(timespec='seconds'))
+# sqlite3.register_converter("datetime",
+#                            lambda dt: datetime.fromisoformat(dt.decode()))
+sqlite3.register_adapter(dict,
+                         lambda obj: json.dumps(obj))
+sqlite3.register_converter("json",
+                           lambda obj: json.loads(obj))
 
 
 def dict_factory(cursor, row):  # noqa
