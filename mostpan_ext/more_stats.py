@@ -17,7 +17,7 @@ logger = current_app.logger.getChild("more_stats")
 db = current_app.config.db
 api = g.blueprints.get("api", None)
 if api is not None:
-    stats_api = Blueprint('stats', __name__)
+    stats_api = Blueprint('stats', __name__, url_prefix="/stats")
 
     @stats_api.route("/counts/<sample>")
     def message_count(sample):  # noqa
