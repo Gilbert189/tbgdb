@@ -84,10 +84,18 @@ if api is not None:
                 f" and unixepoch(date) < {end_range.timestamp()}"
             )
 
+            count_criteria = (
+                "sum(count(*)) over (order by strftime(:datefmt, date))"
+                if args.get("cumulative", default=False, type=bool)
+                else "count(*)"
+            )
+
             cur = db.cursor()
             query = cur.execute(
                 f"""
-                select strftime(:datefmt, date) as time, count(*) as count
+                select
+                    strftime(:datefmt, date) as time,
+                    {count_criteria} as count
                 from Messages
                     join Topics using (tid)
                     join Boards using (bid)
@@ -144,7 +152,8 @@ if api is not None:
                 topic="...",
                 board="...",
                 start="ISOdate...",
-                end="ISOdate...")
+                end="ISOdate...",
+                cumulative="true,false")
     })
 
     api.register_blueprint(stats_api, path="/")
