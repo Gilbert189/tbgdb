@@ -19,30 +19,31 @@ api = g.blueprints.get("api", None)
 if api is not None:
     stats_api = Blueprint('stats', __name__, url_prefix="/stats")
 
+    DATE_FORMATS = {
+        "hourly": "%Y-%m-%dT%H",
+        "daily": "%Y-%m-%d",
+        "weekly": "%Y-W%W",
+        "monthly": "%Y-%m",
+    }
+    RANGE_LIMIT = {
+        "hourly": timedelta(weeks=1),
+        "daily": timedelta(weeks=24),
+        "weekly": timedelta(weeks=120),
+        "monthly": timedelta(weeks=600),
+    }
+    DEFAULT_RANGE = {
+        "hourly": timedelta(days=1),
+        "daily": timedelta(weeks=4),
+        "weekly": timedelta(weeks=24),
+        "monthly": timedelta(weeks=52),
+    }
+
     @stats_api.route("/counts/<sample>")
     def message_count(sample):  # noqa
-        date_formats = {
-            "hourly": "%Y-%m-%dT%H",
-            "daily": "%Y-%m-%d",
-            "weekly": "%Y-W%W",
-            "monthly": "%Y-%m",
-        }
-        range_limit = {
-            "hourly": timedelta(weeks=1),
-            "daily": timedelta(weeks=24),
-            "weekly": timedelta(weeks=120),
-            "monthly": timedelta(weeks=600),
-        }
-        default_range = {
-            "hourly": timedelta(days=1),
-            "daily": timedelta(weeks=4),
-            "weekly": timedelta(weeks=24),
-            "monthly": timedelta(weeks=52),
-        }
         try:
-            if sample not in date_formats:
+            if sample not in DATE_FORMATS:
                 raise ValueError(
-                    f"allowed sample ranges are {list(date_formats)}"
+                    f"allowed sample ranges are {list(DATE_FORMATS)}"
                 )
 
             args = request.args
@@ -68,7 +69,7 @@ if api is not None:
             # so need to use a more convoluted method that does throw an error
             start_range = args.get("start")
             if start_range is None:
-                start_range = datetime.now() - default_range[sample]
+                start_range = datetime.now() - DEFAULT_RANGE[sample]
             else:
                 start_range = datetime.fromisoformat(start_range)
             end_range = args.get("end")
@@ -76,7 +77,7 @@ if api is not None:
                 end_range = datetime.now()
             else:
                 end_range = datetime.fromisoformat(end_range)
-            if end_range - start_range > range_limit[sample]:
+            if end_range - start_range > RANGE_LIMIT[sample]:
                 raise ValueError("range exceeds limit")
             time_conditions = (
                 f"unixepoch(date) > {start_range.timestamp()}"
@@ -94,7 +95,7 @@ if api is not None:
                     and ({board_conditions}) and ({time_conditions})
                 group by time
                 """,
-                {"datefmt": date_formats[sample]}
+                {"datefmt": DATE_FORMATS[sample]}
             ).fetchall()
 
             return {
