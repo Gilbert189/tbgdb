@@ -115,7 +115,7 @@ if api is not None:
             cur = db.cursor()
             combinations = [
                 re.sub(
-                    r"1 and | and 1",
+                    r"(?<!\d)1 and | and 1",
                     "",
                     f"{user} and {topic} and {board}"
                 )
