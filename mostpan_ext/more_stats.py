@@ -1,10 +1,11 @@
 """
 Serves more statistics of the TBGDB's data, mostly in chart form.
 
-Matplotlib is required to create the charts.
+Matplotlib is required to create the charts. If not present, all view functions
+using them will return a 501.
 """
 
-from flask import current_app, Blueprint, g, request, url_for
+from flask import current_app, Blueprint, g, request, url_for, send_file
 from io import BytesIO
 from datetime import datetime, timedelta
 import sqlite3
@@ -15,6 +16,15 @@ from functools import partial
 logger = current_app.logger.getChild("more_stats")
 
 
+try:
+    import matplotlib  # noqa
+except ImportError:
+    logger.warning(
+        "Cannot import matplotlib, plotting functions will not work"
+    )
+    pass
+
+
 db = current_app.config.db
 api = g.blueprints.get("api", None)
 if api is not None:
@@ -23,7 +33,7 @@ if api is not None:
     DATE_FORMATS = {
         "hourly": "%Y-%m-%dT%H",
         "daily": "%Y-%m-%d",
-        "weekly": "%Y-W%W",
+        "weekly": "%G-W%V",
         "monthly": "%Y-%m",
     }
     RANGE_LIMIT = {
@@ -38,6 +48,15 @@ if api is not None:
         "weekly": timedelta(weeks=24),
         "monthly": timedelta(weeks=52),
     }
+    MIME_MPL_TYPES = {
+        "image/svg+xml": "svg",
+        "application/postscript": "ps",
+        "application/pdf": "pdf",
+        "application/x-pdf": "pdf",
+        "image/png": "png",
+        "image/gif": "gif",
+    }
+    MPL_MIME_TYPES = {v: k for k, v in MIME_MPL_TYPES.items()}
 
     def to_bool(x):  # noqa
         try:
@@ -165,11 +184,88 @@ if api is not None:
                 "start": start_range.isoformat(timespec="seconds"),
                 "end": end_range.isoformat(timespec="seconds"),
                 "counts": result,
-            }
+            }, 200
         except ValueError as e:
             return {type(e).__name__: str(e)}, 400
         except sqlite3.Error as e:
             return {type(e).__name__: str(e)}, 422
+
+    @stats_api.route("/plot/counts/<sample>")
+    def plot_message_count(sample):  # noqa
+        try:
+            from matplotlib import pyplot as plt, animation
+        except ImportError as e:
+            __import__("traceback").print_exc()
+            return {type(e).__name__: str(e)}, 501
+
+        # Retrieve the desired content type.
+        if len(accept_types := request.accept_mimetypes) > 0:
+            mime_format = accept_types.best_match(MIME_MPL_TYPES)
+            if mime_format is None:
+                return {
+                    "TypeError":
+                    "unsupported type(s)"
+                    f" (supported types: {', '.join(MIME_MPL_TYPES)})"
+                }, 406
+            mpl_format = MIME_MPL_TYPES[mime_format]
+        else:
+            mpl_format = request.args.get("type", default="svg")
+            if mpl_format not in MPL_MIME_TYPES:
+                return {
+                    "TypeError":
+                    "unsupported type(s)"
+                    f" (supported types: {', '.join(MPL_MIME_TYPES)})"
+                }, 400
+            mime_format = MPL_MIME_TYPES[mpl_format]
+
+        result, code = message_count(sample)
+        if code != 200:
+            return result, code
+        counts = result["counts"]
+
+        # Make the plot.
+        plt.ioff()
+        fig, ax = plt.subplots()
+        times = sorted(counts)
+        mpl_times = [
+            datetime.strptime(time, DATE_FORMATS[sample])
+            # %V requires %w to work properly
+            if sample != "weekly"
+            else datetime.strptime(time+";0", DATE_FORMATS[sample]+";%w")
+            for time in times
+        ]
+        print(mpl_times)
+        for label in next(iter(counts.values()), {}).keys():
+            plt.plot(
+                mpl_times, [counts[time][label] for time in times],
+                label=label
+            )
+
+        ax.legend()
+
+        # Prepare to send the plot.
+        image = BytesIO()
+        if mpl_format == "gif":
+            # fig.savefig doesn't support saving to GIFs directly, so we need
+            # to make a one-frame animation instead.
+
+            # HACK: need to write the file into a temporary file since
+            # AnimationWriters can't write to file objects for some bizarre
+            # reason
+            from tempfile import NamedTemporaryFile
+            import os
+            with NamedTemporaryFile(delete=False, suffix="."+mpl_format) as f:
+                anim = animation.FuncAnimation(fig, lambda t: (ax,), frames=1)
+                anim.save(f.name, writer="pillow")
+                f.seek(0)
+                image.write(f.read())
+            os.remove(f.name)
+        else:
+            fig.savefig(image, format=mpl_format)
+        plt.close()
+        image.seek(0)
+
+        return send_file(image, mime_format), 200
 
     @stats_api.route("/complete")
     def completeness():  # noqa
