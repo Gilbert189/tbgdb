@@ -193,13 +193,16 @@ if api is not None:
     @stats_api.route("/plot/counts/<sample>")
     def plot_message_count(sample):  # noqa
         try:
-            from matplotlib import pyplot as plt, animation
+            from matplotlib import pyplot as plt, animation, dates
         except ImportError as e:
             __import__("traceback").print_exc()
             return {type(e).__name__: str(e)}, 501
 
+        args = request.args
+
         # Retrieve the desired content type.
         if len(accept_types := request.accept_mimetypes) > 0:
+            # from the Accept header (this is given priority)
             mime_format = accept_types.best_match(MIME_MPL_TYPES)
             if mime_format is None:
                 return {
@@ -209,7 +212,8 @@ if api is not None:
                 }, 406
             mpl_format = MIME_MPL_TYPES[mime_format]
         else:
-            mpl_format = request.args.get("type", default="svg")
+            # or from the type=... search query
+            mpl_format = args.get("type", default="svg")
             if mpl_format not in MPL_MIME_TYPES:
                 return {
                     "TypeError":
@@ -225,7 +229,45 @@ if api is not None:
 
         # Make the plot.
         plt.ioff()
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(
+            figsize=(
+                args.get("width", default=6.4, type=float),
+                args.get("height", default=4.8, type=float),
+            ),
+            dpi=args.get("dpi", default=96, type=float),
+            layout="tight",
+        )
+        dimensions = fig.get_size_inches() * fig.get_dpi()
+        if dimensions[0] * dimensions[1] > 20_000_000:
+            return {"ValueError": "dimensions too large"}, 400
+
+        ax.xaxis.set_minor_locator(
+            dates.MonthLocator()
+            if sample == "monthly"
+            else dates.WeekdayLocator()
+            if sample == "weekly"
+            else dates.DayLocator()
+            if sample == "daily"
+            else dates.HourLocator()
+            # if sample == "hourly"
+        )
+        ax.set_ylabel(
+            "Posts"
+            if args.get("cumulative", default=False, type=to_bool)
+            else "Posts per %s" % (
+                # of all the adjectives that we support and has the -ly suffix,
+                # only "daily" is the irregular one
+                "day"
+                if sample == "daily"
+                else sample[:-2]
+            ),
+        )
+        fig.suptitle(
+            "Messages posted over time",
+            fontsize=16
+        )
+        ax.set_title(f"from {result['start']} to {result['end']}", fontsize=10)
+
         times = sorted(counts)
         mpl_times = [
             datetime.strptime(time, DATE_FORMATS[sample])
@@ -234,13 +276,21 @@ if api is not None:
             else datetime.strptime(time+";0", DATE_FORMATS[sample]+";%w")
             for time in times
         ]
-        print(mpl_times)
+        # Fill 'er up!
         for label in next(iter(counts.values()), {}).keys():
-            plt.plot(
+            ax.plot(
                 mpl_times, [counts[time][label] for time in times],
-                label=label
+                label=label,
+                marker=(
+                    "." if args.get("dots", default=False, type=to_bool)
+                    else ""
+                ),
             )
 
+        for label in ax.get_xticklabels():
+            label.set_rotation(25)
+            label.set_horizontalalignment('right')
+        ax.grid(which="both")
         ax.legend()
 
         # Prepare to send the plot.
