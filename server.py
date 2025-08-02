@@ -42,7 +42,7 @@ def build_fts(force_rebuild=False):  # noqa
             for row in cur.execute("select name from sqlite_master").fetchall()
         }
         required_tables = (
-            {"MessageView", "TopicView"}
+            {"MessageView", "TopicView", "MessageIndex", "TopicIndex"}
             | {
                 table + trigger
                 for table in ["MessageFTS", "TopicFTS"]
@@ -55,6 +55,15 @@ def build_fts(force_rebuild=False):  # noqa
 
     current_app.logger.info("Building FTS tables")
     db.executescript("""
+-- for unconditional message counts
+create index if not exists MessageIndex_date on Messages (date);
+-- for conditional message counts
+create index if not exists MessageIndex_user on Messages (user, date, tid);
+create index if not exists MessageIndex_tid on Messages (tid, date, user);
+analyze Messages;
+create index if not exists TopicIndex on Topics (bid);
+analyze Topics;
+
 create view if not exists MessageView as
     select mid, subject, content, name as username, topic_name, board_name
     from Messages
