@@ -130,6 +130,14 @@ if api is not None:
                 else "count(*)"
             )
 
+            if (
+                len(user_conditions)
+                * len(topic_conditions)
+                * len(board_conditions)
+                > 100
+            ):
+                return {"ValueError": "too many conditions"}, 400
+
             result = {}
             cur = db.cursor()
             combinations = [
