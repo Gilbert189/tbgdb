@@ -10,7 +10,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 import sqlite3
 import re
-from functools import partial
+from functools import partial, wraps
 
 
 logger = current_app.logger.getChild("more_stats")
@@ -65,6 +65,70 @@ if api is not None:
             return x in (
                 "true", "True", "TRUE", "T", "t", "yes", "y", "YES",
             )
+
+    def process_figure(func):  # noqa
+        @wraps(func)  # noqa
+        def wrapper(*args, **kwargs):  # noqa
+            try:
+                from matplotlib import pyplot as plt, animation
+                from matplotlib.figure import Figure
+            except ImportError as e:
+                return {type(e).__name__: str(e)}, 501
+
+            # Retrieve the desired content type.
+            if len(accept_types := request.accept_mimetypes) > 0:
+                # from the Accept header (this is given priority)
+                mime_format = accept_types.best_match(MIME_MPL_TYPES)
+                if mime_format is None:
+                    return {
+                        "TypeError":
+                        "unsupported type(s)"
+                        f" (supported types: {', '.join(MIME_MPL_TYPES)})"
+                    }, 406
+                mpl_format = MIME_MPL_TYPES[mime_format]
+            else:
+                # or from the type=... search query
+                mpl_format = args.get("type", default="svg")
+                if mpl_format not in MPL_MIME_TYPES:
+                    return {
+                        "TypeError":
+                        "unsupported type(s)"
+                        f" (supported types: {', '.join(MPL_MIME_TYPES)})"
+                    }, 400
+                mime_format = MPL_MIME_TYPES[mpl_format]
+
+            plt.ioff()
+            fig, code = func(*args, **kwargs)
+
+            if isinstance(fig, Figure):
+                image = BytesIO()
+                if mpl_format == "gif":
+                    # fig.savefig doesn't support saving to GIFs directly, so
+                    # we need to make a one-frame animation instead.
+
+                    # HACK: need to write the file into a temporary file since
+                    # AnimationWriters can't write to file objects for some
+                    # bizarre reason
+                    from tempfile import NamedTemporaryFile
+                    import os
+                    with NamedTemporaryFile(delete=False,
+                                            suffix="."+mpl_format) as f:
+                        anim = animation.FuncAnimation(
+                            fig, lambda t: fig.axes, frames=1
+                        )
+                        anim.save(f.name, writer="pillow")
+                        f.seek(0)
+                        image.write(f.read())
+                    os.remove(f.name)
+                else:
+                    fig.savefig(image, format=mpl_format)
+                image.seek(0)
+                plt.close()
+
+                return send_file(image, mime_format), code
+            else:
+                return fig, code
+        return wrapper
 
     @stats_api.route("/counts/<sample>")
     def message_count(sample):  # noqa
@@ -199,36 +263,11 @@ if api is not None:
             return {type(e).__name__: str(e)}, 422
 
     @stats_api.route("/plot/counts/<sample>")
+    @process_figure
     def plot_message_count(sample):  # noqa
-        try:
-            from matplotlib import pyplot as plt, animation, dates
-        except ImportError as e:
-            __import__("traceback").print_exc()
-            return {type(e).__name__: str(e)}, 501
+        from matplotlib import pyplot as plt, dates
 
         args = request.args
-
-        # Retrieve the desired content type.
-        if len(accept_types := request.accept_mimetypes) > 0:
-            # from the Accept header (this is given priority)
-            mime_format = accept_types.best_match(MIME_MPL_TYPES)
-            if mime_format is None:
-                return {
-                    "TypeError":
-                    "unsupported type(s)"
-                    f" (supported types: {', '.join(MIME_MPL_TYPES)})"
-                }, 406
-            mpl_format = MIME_MPL_TYPES[mime_format]
-        else:
-            # or from the type=... search query
-            mpl_format = args.get("type", default="svg")
-            if mpl_format not in MPL_MIME_TYPES:
-                return {
-                    "TypeError":
-                    "unsupported type(s)"
-                    f" (supported types: {', '.join(MPL_MIME_TYPES)})"
-                }, 400
-            mime_format = MPL_MIME_TYPES[mpl_format]
 
         result, code = message_count(sample)
         if code != 200:
@@ -301,29 +340,7 @@ if api is not None:
         ax.grid(which="both")
         ax.legend()
 
-        # Prepare to send the plot.
-        image = BytesIO()
-        if mpl_format == "gif":
-            # fig.savefig doesn't support saving to GIFs directly, so we need
-            # to make a one-frame animation instead.
-
-            # HACK: need to write the file into a temporary file since
-            # AnimationWriters can't write to file objects for some bizarre
-            # reason
-            from tempfile import NamedTemporaryFile
-            import os
-            with NamedTemporaryFile(delete=False, suffix="."+mpl_format) as f:
-                anim = animation.FuncAnimation(fig, lambda t: (ax,), frames=1)
-                anim.save(f.name, writer="pillow")
-                f.seek(0)
-                image.write(f.read())
-            os.remove(f.name)
-        else:
-            fig.savefig(image, format=mpl_format)
-        plt.close()
-        image.seek(0)
-
-        return send_file(image, mime_format), 200
+        return fig, 200
 
     @stats_api.route("/complete")
     def completeness():  # noqa
