@@ -511,6 +511,7 @@ if api is not None:
             width = 1 / (len(conditions) + 0.5)
             cond_offsets = np.arange(len(conditions)) * width
             cond_offsets -= np.mean(cond_offsets)
+            cond_offsets = cond_offsets[::-1]
             cat_offsets = np.arange(len(counts))
 
             for i, cond in enumerate(conditions):
