@@ -19,11 +19,11 @@ logger = current_app.logger.getChild("more_stats")
 
 try:
     import matplotlib  # noqa
+    import numpy as np
 except ImportError:
     logger.warning(
         "Cannot import matplotlib, plotting functions will not work"
     )
-    pass
 
 
 db = current_app.config.db
@@ -58,6 +58,8 @@ if api is not None:
         "image/gif": "gif",
     }
     MPL_MIME_TYPES = {v: k for k, v in MIME_MPL_TYPES.items()}
+    MAX_PLOT_DOTS = 20_000_000
+    "Maximum area for plots in square dots."
 
     def to_bool(x):  # noqa
         try:
@@ -66,6 +68,23 @@ if api is not None:
             return x in (
                 "true", "True", "TRUE", "T", "t", "yes", "y", "YES",
             )
+
+    def make_figure(**kwargs):  # noqa
+        from matplotlib import pyplot as plt
+
+        args = request.args
+        fig = plt.figure(
+            figsize=(
+                args.get("width", default=6.4, type=float),
+                args.get("height", default=4.8, type=float),
+            ),
+            dpi=args.get("dpi", default=96, type=float),
+            **kwargs,
+        )
+        dimensions = fig.get_size_inches() * fig.get_dpi()
+        if dimensions[0] * dimensions[1] > MAX_PLOT_DOTS:
+            raise ValueError("dimensions too large")
+        return fig
 
     def process_figure(func):  # noqa
         @wraps(func)  # noqa
@@ -426,6 +445,106 @@ if api is not None:
             },
             "counts": result
         }, 200
+
+    @stats_api.route("/plot/counts/topic")
+    @process_figure
+    def plot_message_count_by_topic():  # noqa
+        from math import isqrt
+        MOSAICS = {
+            1: "1",
+            2: "12",
+            3: "123",
+            4: "12;34",
+            5: "111222;334455",
+            6: "123;456",
+            7: "12.;345;.67",
+            8: "112233;444555;667788",
+            9: "123;456;789",
+        }
+        args = request.args
+
+        chart_type = args.get("chart", default="bar")
+        label_values = args.get("label", default=False, type=to_bool)
+        result, code = message_count_by_topic(
+            custom_defaults=dict(
+                limit=9,
+                others=chart_type == "pie"
+            )
+        )
+        if code != 200:
+            return result, code
+        counts = result["counts"]
+        conditions = result["conditions"]["user"]
+
+        fig = make_figure(layout="tight")
+        fig.suptitle("Message count by their topics")
+        if chart_type == "bar":
+            # The bar chart will use the topics as the category (the Y axis)
+            ax = fig.subplots()
+            width = 1 / (len(conditions) + 0.5)
+            cond_offsets = np.arange(len(conditions)) * width
+            cond_offsets -= np.mean(cond_offsets)
+            cat_offsets = np.arange(len(counts))
+
+            for i, cond in enumerate(conditions):
+                rects = ax.barh(
+                    cat_offsets + cond_offsets[i],
+                    [x.get(cond, 0) for x in counts.values()],
+                    height=width,
+                    label=cond,
+                )
+                if label_values:
+                    ax.bar_label(rects, padding=3)
+
+            ax.legend()
+            ax.set_yticks(cat_offsets, counts.keys())
+            ax.grid(axis="x")
+            return fig, 200
+        elif chart_type == "pie":
+            # The pie chart will present the proportion of topics posted by
+            # each user
+            if len(conditions) > 9:
+                raise ValueError("too much conditions to plot")
+            if args.get("limit", default=9, type=int) > 9:
+                raise ValueError(
+                    "too much categories to plot"
+                    f" ({len(counts)} > 10)"
+                )
+            axs = fig.subplot_mosaic(MOSAICS[len(conditions)])
+            for i, cond in zip(axs, conditions):
+                data = {
+                    topic: count[cond]
+                    for topic, count in sorted(
+                        counts.items(),
+                        key=lambda x: x[1].get(cond, 0),
+                        reverse=True
+                    )
+                    if cond in count
+                }
+                axs[i].pie(
+                    data.values(),
+                    autopct=("%1.1f%%" if label_values else ""),
+                    radius=0.75
+                )
+                axs[i].set_ylim(-1.5, 0.75)
+                axs[i].set_title(cond, fontsize=10)
+                axs[i].legend(
+                    labels=data.keys(),
+                    loc="lower center",
+                    ncols=(
+                        1
+                        if (
+                            args.get("key", default="topic_name")
+                            == "topic_name"
+                        )
+                        else isqrt(len(data))
+                    ),
+                    fontsize="small"
+                )
+
+            return fig, 200
+        else:
+            raise ValueError("invalid chart type")
 
     @stats_api.route("/complete")
     def completeness():  # noqa
