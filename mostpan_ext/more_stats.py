@@ -100,34 +100,33 @@ if api is not None:
             plt.ioff()
             fig, code = func(*args, **kwargs)
 
-            if isinstance(fig, Figure):
-                image = BytesIO()
-                if mpl_format == "gif":
-                    # fig.savefig doesn't support saving to GIFs directly, so
-                    # we need to make a one-frame animation instead.
-
-                    # HACK: need to write the file into a temporary file since
-                    # AnimationWriters can't write to file objects for some
-                    # bizarre reason
-                    from tempfile import NamedTemporaryFile
-                    import os
-                    with NamedTemporaryFile(delete=False,
-                                            suffix="."+mpl_format) as f:
-                        anim = animation.FuncAnimation(
-                            fig, lambda t: fig.axes, frames=1
-                        )
-                        anim.save(f.name, writer="pillow")
-                        f.seek(0)
-                        image.write(f.read())
-                    os.remove(f.name)
-                else:
-                    fig.savefig(image, format=mpl_format)
-                image.seek(0)
-                plt.close()
-
-                return send_file(image, mime_format), code
-            else:
+            if not isinstance(fig, Figure):
                 return fig, code
+            image = BytesIO()
+            if mpl_format == "gif":
+                # fig.savefig doesn't support saving to GIFs directly, so
+                # we need to make a one-frame animation instead.
+
+                # HACK: need to write the file into a temporary file since
+                # AnimationWriters can't write to file objects for some
+                # bizarre reason
+                from tempfile import NamedTemporaryFile
+                import os
+                with NamedTemporaryFile(delete=False,
+                                        suffix="."+mpl_format) as f:
+                    anim = animation.FuncAnimation(
+                        fig, lambda t: fig.axes, frames=1
+                    )
+                    anim.save(f.name, writer="pillow")
+                    f.seek(0)
+                    image.write(f.read())
+                os.remove(f.name)
+            else:
+                fig.savefig(image, format=mpl_format)
+            image.seek(0)
+            plt.close()
+
+            return send_file(image, mime_format), code
         return wrapper
 
     @stats_api.route("/counts/<sample>")
