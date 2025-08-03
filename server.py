@@ -4,6 +4,7 @@ import json
 import re
 
 from flask import Blueprint, request, url_for, make_response, current_app, g
+from werkzeug.exceptions import HTTPException
 
 api = Blueprint("api", __name__)
 
@@ -156,6 +157,47 @@ create trigger if not exists TopicFTS_update after update on Topics begin
 end;
 insert into TopicFTS (TopicFTS) values ('rebuild');
     """)
+
+
+def handle_exception(e, code=500):  # noqa
+    if issubclass(type(e), ExceptionGroup):
+        return {
+            "error": type(e).__name__,
+            "message": str(e),
+            "notes": getattr(e, "__notes__", []),
+            "exceptions": [handle_exception(x)[0] for x in e.exceptions]
+        }, code
+    else:
+        return {
+            "error": type(e).__name__,
+            "message": str(e),
+            "notes": getattr(e, "__notes__", []),
+        }, code
+
+
+@api.errorhandler(ValueError)
+@api.errorhandler(TypeError)
+@api.errorhandler(ExceptionGroup)
+def handle_400_exceptions(e):  # noqa
+    return handle_exception(e, 400)
+
+
+@api.errorhandler(sqlite3.Error)
+def handle_422_exceptions(e):  # noqa
+    return handle_exception(e, 400)
+
+
+@api.errorhandler(ImportError)
+def handle_501_exceptions(e):  # noqa
+    return handle_exception(e, 501)
+
+
+@api.errorhandler(HTTPException)
+def handle_http_exceptions(e):  # noqa
+    if isinstance(e.description, Exception):
+        return handle_exception(e.description, e.code)
+    else:
+        return handle_exception(e, e.code)
 
 
 uptime = datetime.now()

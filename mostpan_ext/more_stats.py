@@ -6,9 +6,10 @@ using them will return a 501.
 """
 
 from flask import current_app, Blueprint, g, request, url_for, send_file
+from werkzeug.exceptions import NotAcceptable
+
 from io import BytesIO
 from datetime import datetime, timedelta
-import sqlite3
 import re
 from functools import partial, wraps
 
@@ -69,32 +70,29 @@ if api is not None:
     def process_figure(func):  # noqa
         @wraps(func)  # noqa
         def wrapper(*args, **kwargs):  # noqa
-            try:
-                from matplotlib import pyplot as plt, animation
-                from matplotlib.figure import Figure
-            except ImportError as e:
-                return {type(e).__name__: str(e)}, 501
+            from matplotlib import pyplot as plt, animation
+            from matplotlib.figure import Figure
 
             # Retrieve the desired content type.
             if len(accept_types := request.accept_mimetypes) > 0:
                 # from the Accept header (this is given priority)
                 mime_format = accept_types.best_match(MIME_MPL_TYPES)
                 if mime_format is None:
-                    return {
-                        "TypeError":
-                        "unsupported type(s)"
-                        f" (supported types: {', '.join(MIME_MPL_TYPES)})"
-                    }, 406
+                    raise NotAcceptable(
+                        TypeError(
+                            "unsupported type(s)"
+                            f" (supported types: {', '.join(MPL_MIME_TYPES)})"
+                        )
+                    )
                 mpl_format = MIME_MPL_TYPES[mime_format]
             else:
                 # or from the type=... search query
                 mpl_format = args.get("type", default="svg")
                 if mpl_format not in MPL_MIME_TYPES:
-                    return {
-                        "TypeError":
+                    raise TypeError(
                         "unsupported type(s)"
                         f" (supported types: {', '.join(MPL_MIME_TYPES)})"
-                    }, 400
+                    )
                 mime_format = MPL_MIME_TYPES[mpl_format]
 
             plt.ioff()
@@ -131,135 +129,130 @@ if api is not None:
 
     @stats_api.route("/counts/<sample>")
     def message_count(sample):  # noqa
-        try:
-            if sample not in DATE_FORMATS:
-                raise ValueError(
-                    f"allowed sample ranges are {list(DATE_FORMATS)}"
-                )
-
-            args = request.args
-
-            # Assemble the user conditions
-            user_conditions = [
-                f"user={int(uid)}"
-                for uid in args.getlist("user")
-            ]
-            if user_conditions == []:
-                user_conditions = ["1"]
-            if args.get("combine_users", default=True, type=to_bool):
-                user_conditions = [" or ".join(user_conditions)]
-            # Assemble the topic conditions
-            topic_conditions = [
-                f"tid={int(tid)}"
-                for tid in args.getlist("topic")
-            ]
-            if topic_conditions == []:
-                topic_conditions = ["1"]
-            if args.get("combine_topics", default=True, type=to_bool):
-                topic_conditions = [" or ".join(topic_conditions)]
-            # Assemble the board conditions
-            board_conditions = [
-                f"bid={int(bid)}"
-                for bid in args.getlist("board")
-            ]
-            if board_conditions == []:
-                board_conditions = ["1"]
-            if args.get("combine_boards", default=True, type=to_bool):
-                board_conditions = [" or ".join(board_conditions)]
-            # Assemble the time conditions
-            # args.get uses the default value on error (bad)
-            # so need to use a more convoluted method that does throw an error
-            start_range = args.get("start")
-            if start_range is None:
-                start_range = datetime.now() - DEFAULT_RANGE[sample]
-            else:
-                start_range = datetime.fromisoformat(start_range)
-            end_range = args.get("end")
-            if end_range is None:
-                end_range = datetime.now()
-            else:
-                end_range = datetime.fromisoformat(end_range)
-            if end_range - start_range > RANGE_LIMIT[sample]:
-                raise ValueError("range exceeds limit")
-            time_conditions = (
-                f"unixepoch(date) > {start_range.timestamp()}"
-                f" and unixepoch(date) < {end_range.timestamp()}"
+        if sample not in DATE_FORMATS:
+            raise ValueError(
+                f"allowed sample ranges are {list(DATE_FORMATS)}"
             )
 
-            cumulative = args.get("cumulative", default=False, type=to_bool)
-            count_criteria = (
-                "sum(count(*)) over (order by strftime(:datefmt, date))"
-                if cumulative
-                else "count(*)"
+        args = request.args
+
+        # Assemble the user conditions
+        user_conditions = [
+            f"user={int(uid)}"
+            for uid in args.getlist("user")
+        ]
+        if user_conditions == []:
+            user_conditions = ["1"]
+        if args.get("combine_users", default=True, type=to_bool):
+            user_conditions = [" or ".join(user_conditions)]
+        # Assemble the topic conditions
+        topic_conditions = [
+            f"tid={int(tid)}"
+            for tid in args.getlist("topic")
+        ]
+        if topic_conditions == []:
+            topic_conditions = ["1"]
+        if args.get("combine_topics", default=True, type=to_bool):
+            topic_conditions = [" or ".join(topic_conditions)]
+        # Assemble the board conditions
+        board_conditions = [
+            f"bid={int(bid)}"
+            for bid in args.getlist("board")
+        ]
+        if board_conditions == []:
+            board_conditions = ["1"]
+        if args.get("combine_boards", default=True, type=to_bool):
+            board_conditions = [" or ".join(board_conditions)]
+        # Assemble the time conditions
+        # args.get uses the default value on error (bad)
+        # so need to use a more convoluted method that does throw an error
+        start_range = args.get("start")
+        if start_range is None:
+            start_range = datetime.now() - DEFAULT_RANGE[sample]
+        else:
+            start_range = datetime.fromisoformat(start_range)
+        end_range = args.get("end")
+        if end_range is None:
+            end_range = datetime.now()
+        else:
+            end_range = datetime.fromisoformat(end_range)
+        if end_range - start_range > RANGE_LIMIT[sample]:
+            raise ValueError("range exceeds limit")
+        time_conditions = (
+            f"unixepoch(date) > {start_range.timestamp()}"
+            f" and unixepoch(date) < {end_range.timestamp()}"
+        )
+
+        cumulative = args.get("cumulative", default=False, type=to_bool)
+        count_criteria = (
+            "sum(count(*)) over (order by strftime(:datefmt, date))"
+            if cumulative
+            else "count(*)"
+        )
+
+        if (
+            len(user_conditions)
+            * len(topic_conditions)
+            * len(board_conditions)
+            > 100
+        ):
+            raise ValueError("too many conditions")
+
+        result = {}
+        cur = db.cursor()
+        combinations = [
+            re.sub(
+                r"(?<!\d)1 and | and 1",
+                "",
+                f"{user} and {topic} and {board}"
             )
-
-            if (
-                len(user_conditions)
-                * len(topic_conditions)
-                * len(board_conditions)
-                > 100
-            ):
-                return {"ValueError": "too many conditions"}, 400
-
-            result = {}
-            cur = db.cursor()
-            combinations = [
-                re.sub(
-                    r"(?<!\d)1 and | and 1",
-                    "",
-                    f"{user} and {topic} and {board}"
-                )
-                for user in user_conditions
-                for topic in topic_conditions
-                for board in board_conditions
-            ]
+            for user in user_conditions
+            for topic in topic_conditions
+            for board in board_conditions
+        ]
+        for message_conditions in combinations:
+            query = cur.execute(
+                f"""
+                select
+                    strftime(:datefmt, date) as time,
+                    {count_criteria} as count
+                from Messages
+                    join Topics using (tid)
+                    join Boards using (bid)
+                where ({message_conditions}) and ({time_conditions})
+                group by time
+                """,
+                {"datefmt": DATE_FORMATS[sample]}
+            ).fetchall()
+            for item in query:
+                (result
+                 .setdefault(item["time"], {})
+                 .update({message_conditions: item["count"]})
+                 )
+        # Fill missing values with either:
+        # - zero if we're not taking a running sum, or
+        # - the last value if we're taking one
+        last_value = {}
+        for key_, point in sorted(result.items()):
+            last_value.update(point)
             for message_conditions in combinations:
-                query = cur.execute(
-                    f"""
-                    select
-                        strftime(:datefmt, date) as time,
-                        {count_criteria} as count
-                    from Messages
-                        join Topics using (tid)
-                        join Boards using (bid)
-                    where ({message_conditions}) and ({time_conditions})
-                    group by time
-                    """,
-                    {"datefmt": DATE_FORMATS[sample]}
-                ).fetchall()
-                for item in query:
-                    (result
-                     .setdefault(item["time"], {})
-                     .update({message_conditions: item["count"]})
-                     )
-            # Fill missing values with either:
-            # - zero if we're not taking a running sum, or
-            # - the last value if we're taking one
-            last_value = {}
-            for key_, point in sorted(result.items()):
-                last_value.update(point)
-                for message_conditions in combinations:
-                    point.setdefault(
-                        message_conditions,
-                        int(last_value[message_conditions])
-                        if cumulative
-                        else 0
-                    )
+                point.setdefault(
+                    message_conditions,
+                    int(last_value[message_conditions])
+                    if cumulative
+                    else 0
+                )
 
-            return {
-                "conditions": {
-                    "user": user_conditions,
-                    "topic": topic_conditions,
-                    "board": board_conditions,
-                },
-                "start": start_range.isoformat(timespec="seconds"),
-                "end": end_range.isoformat(timespec="seconds"),
-                "counts": result,
-            }, 200
-        except ValueError as e:
-            return {type(e).__name__: str(e)}, 400
-        except sqlite3.Error as e:
-            return {type(e).__name__: str(e)}, 422
+        return {
+            "conditions": {
+                "user": user_conditions,
+                "topic": topic_conditions,
+                "board": board_conditions,
+            },
+            "start": start_range.isoformat(timespec="seconds"),
+            "end": end_range.isoformat(timespec="seconds"),
+            "counts": result,
+        }, 200
 
     @stats_api.route("/plot/counts/<sample>")
     @process_figure
@@ -285,7 +278,7 @@ if api is not None:
         )
         dimensions = fig.get_size_inches() * fig.get_dpi()
         if dimensions[0] * dimensions[1] > 20_000_000:
-            return {"ValueError": "dimensions too large"}, 400
+            raise ValueError("dimensions too large")
 
         ax.xaxis.set_minor_locator(
             dates.MonthLocator()
