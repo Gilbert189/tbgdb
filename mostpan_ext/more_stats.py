@@ -337,6 +337,96 @@ if api is not None:
 
         return fig, 200
 
+    @stats_api.route("/counts/topic")
+    def message_count_by_topic(custom_defaults={}):  # noqa
+        args = request.args
+
+        limit = args.get(
+            "limit",
+            default=custom_defaults.get("limit", 100),
+            type=int
+        )
+        include_others = args.get(
+            "others",
+            default=custom_defaults.get("others", False),
+            type=to_bool
+        )
+        key_name = args.get(
+            "key",
+            default=custom_defaults.get("key", "topic_name"),
+            type=str
+        )
+        if key_name not in ("tid", "topic_name"):
+            raise ValueError('key should either be "tid" or "topic_name"')
+
+        # Assemble the user conditions
+        user_conditions = [
+            f"user={int(uid)}"
+            for uid in args.getlist("user")
+        ]
+        if user_conditions == []:
+            user_conditions = ["1"]
+        if args.get("combine_users", default=True, type=to_bool):
+            user_conditions = [" or ".join(user_conditions)]
+        # Assemble the board conditions
+        board_conditions = " or ".join(
+            f"bid={int(bid)}"
+            for bid in args.getlist("board")
+        )
+        if board_conditions == "":
+            board_conditions = "1"
+        # Assemble the time conditions
+        time_conditions = []
+        start_range = args.get("start", type=datetime.fromisoformat)
+        if start_range is not None:
+            time_conditions.append(start_range.timestamp())
+        end_range = args.get("end", type=datetime.fromisoformat)
+        if end_range is not None:
+            time_conditions.append(end_range.timestamp())
+        time_conditions = " and ".join(time_conditions)
+        if time_conditions == "":
+            time_conditions = "1"
+
+        if len(user_conditions) > 100:
+            raise ValueError("too much conditions")
+
+        # Read the database
+        result = {}
+        cur = db.cursor()
+        for user in user_conditions:
+            query = cur.execute(
+                f"""
+                select {key_name} as key, count(*) as count
+                from Messages
+                    join Topics using (tid)
+                where ({user})
+                    and ({board_conditions})
+                    and ({time_conditions})
+                group by tid
+                order by count desc
+                """ + (
+                    f"limit {limit}"
+                    if not include_others
+                    else ""
+                )
+            )
+            for i, row in enumerate(query):
+                if i < limit:
+                    category = result.setdefault(row["key"], {})
+                    category[user] = row["count"]
+                else:
+                    category = result.setdefault("(other)", {})
+                    category[user] = category.get(user, 0) + row["count"]
+
+        return {
+            "conditions": {
+                "user": user_conditions,
+                "board": board_conditions,
+                "time": time_conditions,
+            },
+            "counts": result
+        }, 200
+
     @stats_api.route("/complete")
     def completeness():  # noqa
         cur = db.cursor()
