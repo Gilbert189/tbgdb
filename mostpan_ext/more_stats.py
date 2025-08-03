@@ -12,6 +12,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 import re
 from functools import partial, wraps
+from collections import Counter
 
 
 logger = current_app.logger.getChild("more_stats")
@@ -360,6 +361,11 @@ if api is not None:
             default=custom_defaults.get("others", False),
             type=to_bool
         )
+        shared_only = args.get(
+            "shared",
+            default=custom_defaults.get("shared", False),
+            type=to_bool
+        )
         key_name = args.get(
             "key",
             default=custom_defaults.get("key", "topic_name"),
@@ -378,6 +384,7 @@ if api is not None:
         if args.get("combine_users", default=True, type=to_bool):
             user_conditions = [" or ".join(user_conditions)]
         # Assemble the board conditions
+        # Unlike message_count_over_time(), combine_board is always True
         board_conditions = " or ".join(
             f"bid={int(bid)}"
             for bid in args.getlist("board")
@@ -399,9 +406,37 @@ if api is not None:
         if len(user_conditions) > 100:
             raise ValueError("too much conditions")
 
+        # If necessary, assemble the topic conditions
+        topic_conditions = "1"
+        cur = db.cursor()
+        if shared_only:
+            topic_conditions = None
+            for user in user_conditions:
+                query = cur.execute(
+                    f"""
+                    select tid, count(*) as count
+                    from Messages
+                    where {user}
+                    group by tid
+                    order by count desc
+                    """
+                )
+                countie = Counter({row["tid"]: row["count"] for row in query})
+                if topic_conditions is None:
+                    topic_conditions = countie
+                else:
+                    topic_conditions &= countie
+            topic_conditions = sorted(topic_conditions.items(),
+                                      key=lambda x: x[1], reverse=True)
+            if not include_others:
+                topic_conditions = topic_conditions[:limit]
+            topic_conditions = " or ".join(
+                f"tid={k}"
+                for k, v in topic_conditions
+            )
+
         # Read the database
         result = {}
-        cur = db.cursor()
         for user in user_conditions:
             query = cur.execute(
                 f"""
@@ -409,6 +444,7 @@ if api is not None:
                 from Messages
                     join Topics using (tid)
                 where ({user})
+                    and ({topic_conditions})
                     and ({board_conditions})
                     and ({time_conditions})
                 group by tid
@@ -431,6 +467,7 @@ if api is not None:
             "conditions": {
                 "user": user_conditions,
                 "board": board_conditions,
+                "topic": topic_conditions,
                 "time": time_conditions,
             },
             "counts": result
