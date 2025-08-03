@@ -276,7 +276,7 @@ if api is not None:
     @stats_api.route("/plot/counts/<sample>")
     @process_figure
     def plot_message_count_over_time(sample):  # noqa
-        from matplotlib import pyplot as plt, dates
+        from matplotlib import dates
 
         args = request.args
 
@@ -286,18 +286,8 @@ if api is not None:
         counts = result["counts"]
 
         # Make the plot.
-        plt.ioff()
-        fig, ax = plt.subplots(
-            figsize=(
-                args.get("width", default=6.4, type=float),
-                args.get("height", default=4.8, type=float),
-            ),
-            dpi=args.get("dpi", default=96, type=float),
-            layout="tight",
-        )
-        dimensions = fig.get_size_inches() * fig.get_dpi()
-        if dimensions[0] * dimensions[1] > 20_000_000:
-            raise ValueError("dimensions too large")
+        fig = make_figure(layout="tight")
+        ax = fig.subplots()
 
         ax.xaxis.set_minor_locator(
             dates.MonthLocator()
