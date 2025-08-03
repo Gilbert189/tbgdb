@@ -128,7 +128,7 @@ if api is not None:
         return wrapper
 
     @stats_api.route("/counts/<sample>")
-    def message_count(sample):  # noqa
+    def message_count_over_time(sample):  # noqa
         if sample not in DATE_FORMATS:
             raise ValueError(
                 f"allowed sample ranges are {list(DATE_FORMATS)}"
@@ -256,12 +256,12 @@ if api is not None:
 
     @stats_api.route("/plot/counts/<sample>")
     @process_figure
-    def plot_message_count(sample):  # noqa
+    def plot_message_count_over_time(sample):  # noqa
         from matplotlib import pyplot as plt, dates
 
         args = request.args
 
-        result, code = message_count(sample)
+        result, code = message_count_over_time(sample)
         if code != 200:
             return result, code
         counts = result["counts"]
@@ -362,7 +362,7 @@ if api is not None:
     current_app.config.other_api_examples.update({
         "message_counts_over_time":
         partial(url_for,
-                "api.stats.message_count",
+                "api.stats.message_count_over_time",
                 sample="hourly,daily,weekly,monthly",
                 user="...",
                 topic="...",
