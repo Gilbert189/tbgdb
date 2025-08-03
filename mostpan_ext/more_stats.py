@@ -39,8 +39,8 @@ if api is not None:
     RANGE_LIMIT = {
         "hourly": timedelta(weeks=1),
         "daily": timedelta(weeks=24),
-        "weekly": timedelta(weeks=120),
-        "monthly": timedelta(weeks=600),
+        "weekly": timedelta(weeks=200),
+        "monthly": timedelta(weeks=1500),
     }
     DEFAULT_RANGE = {
         "hourly": timedelta(days=1),
@@ -297,6 +297,9 @@ if api is not None:
             if sample == "daily"
             else dates.HourLocator()
             # if sample == "hourly"
+        )
+        ax.xaxis.set_major_locator(
+            dates.AutoDateLocator(maxticks=round(fig.get_figwidth()))
         )
         ax.set_ylabel(
             "Posts"
