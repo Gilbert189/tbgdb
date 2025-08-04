@@ -11,7 +11,7 @@ from werkzeug.exceptions import NotAcceptable
 from io import BytesIO
 from datetime import datetime, timedelta
 import re
-from functools import partial, wraps
+from functools import partial, wraps, lru_cache
 from collections import Counter
 
 
@@ -147,6 +147,29 @@ if api is not None:
             return send_file(image, mime_format), code
         return wrapper
 
+    def to_human_conditions(cond):  # noqa
+        cur = db.cursor()
+
+        @lru_cache(1000)
+        def topic(match):  # noqa
+            return cur.execute("select topic_name from Topics where tid=?",
+                               (int(match.group(1)),)).fetchone()["topic_name"]
+        cond = re.sub(r"tid=(\d+)", topic, cond)
+
+        @lru_cache(1000)
+        def user(match):  # noqa
+            return cur.execute("select name from Users where uid=?",
+                               (int(match.group(1)),)).fetchone()["name"]
+        cond = re.sub(r"user=(\d+)", user, cond)
+
+        @lru_cache(1000)
+        def board(match):  # noqa
+            return cur.execute("select board_name from Boards where bid=?",
+                               (int(match.group(1)),)).fetchone()["board_name"]
+        cond = re.sub(r"bid=(\d+)", board, cond)
+
+        return cond
+
     @stats_api.route("/counts/<sample>")
     def message_count_over_time(sample):  # noqa
         if sample not in DATE_FORMATS:
@@ -280,6 +303,7 @@ if api is not None:
         from matplotlib import dates
 
         args = request.args
+        human_readable = args.get("human", default=True, type=to_bool)
 
         result, code = message_count_over_time(sample)
         if code != 200:
@@ -330,6 +354,8 @@ if api is not None:
         ]
         # Fill 'er up!
         for label in next(iter(counts.values()), {}).keys():
+            if human_readable:
+                label = to_human_conditions(label)
             ax.plot(
                 mpl_times, [counts[time][label] for time in times],
                 label=label,
@@ -371,6 +397,7 @@ if api is not None:
             default=custom_defaults.get("key", "topic_name"),
             type=str
         )
+
         if key_name not in ("tid", "topic_name"):
             raise ValueError('key should either be "tid" or "topic_name"')
 
@@ -488,7 +515,9 @@ if api is not None:
             8: "112233;444555;667788",
             9: "123;456;789",
         }
+
         args = request.args
+        human_readable = args.get("human", default=True, type=to_bool)
 
         chart_type = args.get("chart", default="bar")
         label_values = args.get("label", default=False, type=to_bool)
@@ -519,7 +548,11 @@ if api is not None:
                     cat_offsets + cond_offsets[i],
                     [x.get(cond, 0) for x in counts.values()],
                     height=width,
-                    label=cond,
+                    label=(
+                        to_human_conditions(cond)
+                        if human_readable
+                        else cond
+                    ),
                 )
                 if label_values:
                     ax.bar_label(rects, padding=3)
