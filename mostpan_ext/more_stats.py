@@ -639,7 +639,45 @@ if api is not None:
                 board="...",
                 start="ISOdate...",
                 end="ISOdate...",
-                cumulative="true,false")
+                cumulative="true,false"),
+        "plot_message_counts_over_time":
+        partial(url_for,
+                "api.stats.plot_message_count_over_time",
+                sample="hourly,daily,weekly,monthly",
+                user="...",
+                topic="...",
+                board="...",
+                start="ISOdate...",
+                end="ISOdate...",
+                cumulative="true,false",
+                width="...",
+                height="...",
+                dpi="...",
+                human="true,false",),
+        "message_counts_by_topic":
+        partial(url_for,
+                "api.stats.message_count_by_topic",
+                user="...",
+                board="...",
+                start="ISOdate...",
+                end="ISOdate...",
+                shared="true,false",
+                key="tid,topic_name",
+                others="true,false"),
+        "plot_message_counts_by_topic":
+        partial(url_for,
+                "api.stats.plot_message_count_by_topic",
+                user="...",
+                board="...",
+                start="ISOdate...",
+                end="ISOdate...",
+                shared="true,false",
+                key="tid,topic_name",
+                others="true,false",
+                width="...",
+                height="...",
+                dpi="...",
+                human="true,false",)
     })
 
     api.register_blueprint(stats_api, path="/")
