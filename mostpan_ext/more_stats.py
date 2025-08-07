@@ -21,6 +21,7 @@ logger = current_app.logger.getChild("more_stats")
 try:
     import matplotlib  # noqa
     import numpy as np
+    matplotlib.use('agg')
 except ImportError:
     logger.warning(
         "Cannot import matplotlib, plotting functions will not work"
@@ -69,6 +70,13 @@ if api is not None:
             return x in (
                 "true", "True", "TRUE", "T", "t", "yes", "y", "YES",
             )
+
+    def first(x, *args):  # noqa
+        "Gets the first item of an iterator."
+        if len(args) == 1:
+            return next(iter(x), args[0])
+        else:
+            return next(iter(x))
 
     def make_figure(**kwargs):  # noqa
         from matplotlib import pyplot as plt
@@ -370,6 +378,119 @@ if api is not None:
             label.set_horizontalalignment('right')
         ax.grid(which="both")
         ax.legend()
+
+        return fig, 200
+
+    @stats_api.route("/plot/activity")
+    @process_figure
+    def plot_activity():  # noqa
+        """Creates a GitHub-style activity chart.
+
+        """
+        from matplotlib import colors
+        args = request.args
+
+        # This plot is only meant for a single user.
+        users = len(args.getlist("user"))
+        if users != 1:
+            error = ValueError("can only plot a single user")
+            if users > 1:
+                error.add_note(
+                    "For multi-user plots, use"
+                    # f" {url_for('api.stats.plot_stripes')}"
+                    " (NOT IMPLEMENTED YET)"
+                )
+            raise error
+        # Likewise, this plot only presents a single dimension over time.
+        if (
+            not args.get("combine_users", default=True, type=to_bool)
+            or not args.get("combine_topics", default=True, type=to_bool)
+            or not args.get("combine_boards", default=True, type=to_bool)
+        ):
+            raise ValueError("can only plot a single condition")
+
+        # Query the database.
+        now = datetime.now()
+        with current_app.test_request_context(
+            query_string={**args,
+                          "start": (now - RANGE_LIMIT["daily"]).isoformat(),
+                          "end": now.isoformat()}
+        ):
+            result, code = message_count_over_time("daily")
+        if code != 200:
+            return result, code
+        counts = result["counts"]
+        username = to_human_conditions(result['conditions']['user'][0])
+        # Currently the dates are strings, so convert them
+        counts = {
+            datetime.strptime(dt, DATE_FORMATS["daily"]): count
+            for dt, count in counts.items()
+        }
+        start = datetime.fromisoformat(result["start"]).date()
+        end = datetime.fromisoformat(result["end"]).date()
+        date_range = (start + timedelta(days=i)
+                      for i in range((end - start).days + 1))
+
+        # Make the table.
+        activity = {dt.isocalendar()[:-1]: [float("nan") for _ in range(7)]
+                    for dt in date_range}
+        for date in counts:
+            count = first(counts[date].values())
+            year, week, week_day = date.isocalendar()
+            activity[year, week][week_day - 1] = count
+
+        # Make the plot.
+        fig = make_figure(layout="tight")
+        ax = fig.subplots()
+        # Make stripes to be put atop the heatmap (to distinguish 0 with NaN)
+        if args.get("hatches", default=False, type=to_bool):
+            ax.axhspan(
+                -1, 8,
+                hatch=r"xx", zorder=-1,
+                facecolor="magenta", edgecolor="black"
+            )
+        # Transpose to make the week number the first dimension
+        heatmap = [[week[week_day] for week in activity.values()]
+                   for week_day in range(7)]
+        max_heatmap = max(day
+                          for week in activity.values()
+                          for day in week
+                          # all numbers are integers except NaNs
+                          if type(day) is int)
+        if args.get("discrete", default=False, type=to_bool):
+            norm = colors.BoundaryNorm(np.linspace(0, max_heatmap, 6), 256)
+        else:
+            norm = colors.Normalize(0, max_heatmap)
+        image = ax.imshow(heatmap, cmap="Greens", norm=norm)
+        # Find places to put the ticks
+        weeks = list(activity)
+        start_month_idx = start.year*12 + start.month
+        end_month_idx = end.year*12 + end.month
+        months = (divmod(x, 12) for x in range(start_month_idx, end_month_idx))
+        months = (datetime(year, month, 1).date() for year, month in months)
+        months = {
+            dt.strftime("%b" if (end - start).days < 366 else "%Y %b"):
+            weeks.index(dt.isocalendar()[:-1])
+            for dt in months
+            if start <= dt <= end
+        }
+
+        # Make the plot look nice
+        ax.set_xticks(list(months.values()), labels=list(months.keys()))
+        ax.set_yticks(
+            range(7),
+            labels=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        )
+        ax.set_title(f"Activity of {username}")
+        fig.colorbar(image, label="Posts per day")
+        for label in ax.get_xticklabels():
+            label.set_horizontalalignment('right')
+        # Make a grid around the boxes
+        ax.set_xticks(np.arange(len(activity)+1) - 0.5, minor=True)
+        ax.set_yticks(np.arange(8) - 0.5, minor=True)
+        ax.grid(which="minor", color="w", linestyle='-', linewidth=3)
+        ax.tick_params(which="minor", bottom=False, left=False)
+        ax.grid
 
         return fig, 200
 
