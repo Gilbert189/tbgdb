@@ -361,7 +361,7 @@ if api is not None:
             for time in times
         ]
         # Fill 'er up!
-        for label in next(iter(counts.values()), {}).keys():
+        for label in first(counts.values(), {}).keys():
             if human_readable:
                 label = to_human_conditions(label)
             ax.plot(
