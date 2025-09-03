@@ -178,6 +178,21 @@ if api is not None:
 
         return cond
 
+    def datetime_range(start, end, step,  # noqa
+                        /, extra=False, inclusive=False):  # noqa
+        """Creates a generator yielding a range of datetimes.
+
+        :param extra: Include the first value not smaller than `end`.
+                      This doesn't necessarily equal to `end`.
+        :param inclusive: Include the first value not smaller than `end`
+                          only if it's equal to `end`."""
+        value = start
+        while value < end:
+            yield value
+            value += step
+        if (inclusive and value == end) or extra:
+            yield value
+
     @stats_api.route("/counts/<sample>")
     def message_count_over_time(sample):  # noqa
         if sample not in DATE_FORMATS:
@@ -241,6 +256,7 @@ if api is not None:
             else "count(*)"
         )
 
+        # Make sure we don't query the database too much
         if (
             len(user_conditions)
             * len(topic_conditions)
@@ -248,9 +264,6 @@ if api is not None:
             > 100
         ):
             raise ValueError("too many conditions")
-
-        result = {}
-        cur = db.cursor()
         combinations = [
             re.sub(
                 r"(?<!\d)1 and | and 1",
@@ -261,6 +274,24 @@ if api is not None:
             for topic in topic_conditions
             for board in board_conditions
         ]
+
+        # Query the database.
+        if args.get("fill", default=True, type=to_bool):
+            result = {
+                dt.strftime(DATE_FORMATS[sample]): {}
+                for dt in datetime_range(
+                    start_range, end_range, (
+                        timedelta(hours=1) if sample == "hourly"
+                        else timedelta(days=1) if sample == "daily"
+                        else timedelta(weeks=1) if sample == "weekly"
+                        else timedelta(days=28)  # if sample == "monthly"
+                    ),
+                    extra=False
+                )
+            }
+        else:
+            result = {}
+        cur = db.cursor()
         for message_conditions in combinations:
             query = cur.execute(
                 f"""
