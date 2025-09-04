@@ -251,9 +251,10 @@ if api is not None:
 
         cumulative = args.get("cumulative", default=False, type=to_bool)
         count_criteria = (
-            "sum(count(*)) over (order by strftime(:datefmt, date))"
+            "sum(count(case when %s then 1 else null end))"
+            " over (order by strftime(:datefmt, date))"
             if cumulative
-            else "count(*)"
+            else "count(case when %s then 1 else null end)"
         )
 
         # Make sure we don't query the database too much
@@ -292,25 +293,27 @@ if api is not None:
         else:
             result = {}
         cur = db.cursor()
-        for message_conditions in combinations:
-            query = cur.execute(
-                f"""
-                select
-                    strftime(:datefmt, date) as time,
-                    {count_criteria} as count
-                from Messages
-                    join Topics using (tid)
-                    join Boards using (bid)
-                where ({message_conditions}) and ({time_conditions})
-                group by time
-                """,
-                {"datefmt": DATE_FORMATS[sample]}
-            ).fetchall()
-            for item in query:
-                (result
-                 .setdefault(item["time"], {})
-                 .update({message_conditions: item["count"]})
-                 )
+        query = cur.execute(
+            f"""
+            select
+                strftime(:datefmt, date) as time,
+                {",".join(
+                    ("%s as %%s" % count_criteria)
+                    % (cond, repr(cond))
+                    for cond in combinations
+                )}
+            from Messages
+                join Topics using (tid)
+                join Boards using (bid)
+            where ({time_conditions})
+            group by time
+            """,
+            {"datefmt": DATE_FORMATS[sample]}
+        ).fetchall()
+        for item in query:
+            time = item["time"]
+            del item["time"]
+            result[time] = item
         # Fill missing values with either:
         # - zero if we're not taking a running sum, or
         # - the last value if we're taking one
