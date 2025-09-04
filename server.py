@@ -160,6 +160,8 @@ insert into TopicFTS (TopicFTS) values ('rebuild');
 
 
 def handle_exception(e, code=500):  # noqa
+    import traceback
+    traceback.print_exc()
     if issubclass(type(e), ExceptionGroup):
         return {
             "error": type(e).__name__,
