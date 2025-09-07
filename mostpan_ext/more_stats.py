@@ -7,6 +7,7 @@ using them will return a 501.
 
 from flask import current_app, Blueprint, g, request, url_for, send_file
 from werkzeug.exceptions import NotAcceptable
+from werkzeug.datastructures import MultiDict
 
 from io import BytesIO
 from datetime import datetime, timedelta
@@ -431,8 +432,7 @@ if api is not None:
             if users > 1:
                 error.add_note(
                     "For multi-user plots, use"
-                    # f" {url_for('api.stats.plot_stripes')}"
-                    " (NOT IMPLEMENTED YET)"
+                    f" {url_for('api.stats.plot_stripes')}"
                 )
             raise error
         # Likewise, this plot only presents a single dimension over time.
@@ -525,6 +525,87 @@ if api is not None:
         ax.grid(which="minor", color="w", linestyle='-', linewidth=3)
         ax.tick_params(which="minor", bottom=False, left=False)
         ax.grid
+
+        return fig, 200
+
+    @stats_api.route("/plot/stripes", defaults={"sample": "monthly"})
+    @stats_api.route("/plot/stripes/<sample>")
+    @process_figure
+    def plot_stripes(sample):  # noqa
+        """Creates a heatmap of differing categories over time."""
+        from matplotlib import dates
+        args = MultiDict(request.args)
+        # Set default values for the date limits.
+        now = datetime.now()
+        if "end" not in args:
+            args["end"] = now.isoformat()
+        if "start" not in args:
+            args["start"] = (now - RANGE_LIMIT[sample] / 3).isoformat()
+        human_readable = args.get("human", default=True, type=to_bool)
+
+        # Query the database.
+        with current_app.test_request_context(query_string=args):
+            result, code = message_count_over_time(sample)
+        if code != 200:
+            return result, code
+        counts = result["counts"]
+
+        # Make the plot.
+        fig = make_figure(layout="tight")
+        ax = fig.subplots()
+        # Make stripes to be put atop the heatmap (to distinguish 0 with NaN)
+        if args.get("hatches", default=False, type=to_bool):
+            ax.axhspan(
+                -1, 8,
+                hatch=r"xx", zorder=-1,
+                facecolor="magenta", edgecolor="black"
+            )
+        # Assign titles for the figure.
+        fig.suptitle(
+            "Messages posted over time",
+            fontsize=16
+        )
+        ax.set_title(f"from {result['start']} to {result['end']}", fontsize=10)
+
+        # Fill 'er up!
+        column_idx = {x: i for i, x in enumerate(counts)}
+        # bespoke sorted sets
+        row_idx = {row: None for columns in counts.values() for row in columns}
+        row_idx = {x: i for i, x in enumerate(row_idx)}
+        heatmap = np.zeros((len(row_idx), len(column_idx)))
+        for column, rows in counts.items():
+            for row, item in rows.items():
+                heatmap[row_idx[row], column_idx[column]] = item
+        ax.imshow(
+            heatmap,
+            aspect="auto", interpolation="nearest",
+            cmap=args.get("color", default="Greens"),
+            extent=[datetime.fromisoformat(result['start']),
+                    datetime.fromisoformat(result['end']),
+                    len(row_idx) - 0.5,
+                    -0.5]
+        )
+
+        # Assign ticks for the axes.
+        ax.xaxis_date()
+        ax.xaxis.set_minor_locator(
+            dates.MonthLocator()
+            if sample == "monthly"
+            else dates.WeekdayLocator()
+            if sample == "weekly"
+            else dates.DayLocator()
+            if sample == "daily"
+            else dates.HourLocator()
+            # if sample == "hourly"
+        )
+        ax.xaxis.set_major_locator(
+            dates.AutoDateLocator(maxticks=round(fig.get_figwidth()))
+        )
+        ax.set_yticks(list(row_idx.values()),
+                      labels=[to_human_conditions(cond)
+                              if human_readable
+                              else cond
+                              for cond in row_idx.keys()])
 
         return fig, 200
 
