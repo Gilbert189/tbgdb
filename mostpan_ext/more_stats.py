@@ -398,10 +398,12 @@ if api is not None:
         # Fill 'er up!
         for label in first(counts.values(), {}).keys():
             if human_readable:
-                label = to_human_conditions(label)
+                plot_label = to_human_conditions(label)
+            else:
+                plot_label = label
             ax.plot(
                 mpl_times, [counts[time][label] for time in times],
-                label=label,
+                label=plot_label,
                 marker=(
                     "." if args.get("dots", default=False, type=to_bool)
                     else ""
