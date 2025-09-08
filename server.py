@@ -205,9 +205,17 @@ def handle_http_exceptions(e):  # noqa
 uptime = datetime.now()
 
 
+# For all the routes, if the parameter in the docstring doesn't correspond to
+# a function/path parameter, it is meant for a query string.
+
+
 @api.route("/post/<mid>")
 @api.route("/message/<mid>")
 def get_message(mid):  # noqa
+    """Get data of a message under a certain message ID.
+
+    :param mid: The message ID.
+    """
     cur = db.cursor()
     query = cur.execute("select * from Messages where mid=?", (mid,))
     query = query.fetchone()
@@ -219,6 +227,10 @@ def get_message(mid):  # noqa
 
 @api.route("/user/<uid>")
 def get_user(uid):  # noqa
+    """Get data of a user under a certain user ID.
+
+    :param uid: The user ID.
+    """
     cur = db.cursor()
     query = cur.execute("select * from Users where uid=?", (uid,))
     query = query.fetchone()
@@ -230,6 +242,10 @@ def get_user(uid):  # noqa
 
 @api.route("/topic/<tid>")
 def get_topic(tid):  # noqa
+    """Get data of a topic under a certain topic ID.
+
+    :param tid: The topic ID.
+    """
     cur = db.cursor()
     query = cur.execute("select * from Topics where tid=?", (tid,))
     query = query.fetchone()
@@ -242,6 +258,10 @@ def get_topic(tid):  # noqa
 @api.route("/forum/<bid>")
 @api.route("/board/<bid>")
 def get_board(bid):  # noqa
+    """Get data of a topic under a certain topic ID.
+
+    :param tid: The topic ID.
+    """
     cur = db.cursor()
     query = cur.execute("select * from Boards where bid=?", (bid,))
     query = query.fetchone()
@@ -254,6 +274,10 @@ def get_board(bid):  # noqa
 @api.route("/topic/<tid>/posts")
 @api.route("/topic/<tid>/messages")
 def get_topic_messages(tid):  # noqa
+    """Get data of all messages of a certain topic ID.
+
+    :param tid: The topic ID.
+    """
     cur = db.cursor()
     query = cur.execute(
         "select * from Messages where tid=? order by mid asc",
@@ -269,6 +293,10 @@ def get_topic_messages(tid):  # noqa
 @api.route("/forum/<bid>/topics")
 @api.route("/board/<bid>/topics")
 def get_board_topics(bid):  # noqa
+    """Get data of all topics of a certain board ID.
+
+    :param bid: The board ID.
+    """
     cur = db.cursor()
     query = cur.execute(
         """
@@ -289,6 +317,10 @@ def get_board_topics(bid):  # noqa
 
 @api.route("/search/messages")
 def search_messages():  # noqa
+    """Search for a text in a message.
+
+    :param q: The text to search.
+    """
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
 
@@ -314,6 +346,10 @@ def search_messages():  # noqa
 
 @api.route("/search/topics")
 def search_topics():  # noqa
+    """Search for a text in a topic.
+
+    :param q: The text to search.
+    """
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
 
@@ -339,6 +375,7 @@ def search_topics():  # noqa
 
 @api.route("/stats")
 def statistics():  # noqa
+    """Show some statistics of the scraper."""
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
 
@@ -351,6 +388,7 @@ def statistics():  # noqa
 
 @api.route("/about")
 def about():  # noqa
+    """Show the suite's purpose."""
     about_text = f"""
 This is an API for TBGDB, a screen-scraper suite for the Text Based Games \
 Forums.
@@ -369,6 +407,7 @@ respect their rights.
 
 @api.route("/")
 def hello():  # noqa
+    """Show some example queries."""
     return {
         "hello": "world",
         "uptime": uptime.isoformat(),

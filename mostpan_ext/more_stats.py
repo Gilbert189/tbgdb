@@ -157,6 +157,7 @@ if api is not None:
         return wrapper
 
     def to_human_conditions(cond):  # noqa
+        "Turn SQL conditions into human-readable conditions."
         cur = db.cursor()
 
         @lru_cache(1000)
@@ -196,6 +197,28 @@ if api is not None:
 
     @stats_api.route("/counts/<sample>")
     def message_count_over_time(sample):  # noqa
+        """Count how many messages are posted under a certain time range.
+
+        :param sample: The sample range for each data point.
+        :param ISOdate start: Count messages posted after this time.
+        :param ISOdate end: Count messages posted before this time.
+        :param list[str] user: Select these user IDs.
+                               If not included, all users will be selected.
+        :param list[str] topic: Select these topic IDs.
+                                If not included, all topics will be selected.
+        :param list[str] board: Select these board IDs.
+                                If not included, all boards will be selected.
+        :param bool combine_users: Combine multiple users into a single
+                                   category. Defaults to ``True``.
+        :param bool combine_topics: Combine multiple topics into a single
+                                    category. Defaults to ``True``.
+        :param bool combine_boards: Combine multiple boards into a single
+                                    category. Defaults to ``True``.
+        :param bool cumulative: Whether to accumulate the count over time.
+                                Defaults to ``False``.
+        :param bool fill: Whether to fill missing dates.
+                          Defaults to ``True``.
+        """
         if sample not in DATE_FORMATS:
             raise ValueError(
                 f"allowed sample ranges are {list(DATE_FORMATS)}"
@@ -343,6 +366,15 @@ if api is not None:
     @stats_api.route("/plot/counts/<sample>")
     @process_figure
     def plot_message_count_over_time(sample):  # noqa
+        """Plot the message count over time under a certain time range.
+
+        In addition to these parameters, this requests uses:
+        - :ref:`plotting parameters <plotting>`
+        - parameters from :py:func:`message_counts_over_time()`
+
+        :param bool human: Use human-readable labels. Defaults to ``True``.
+        :param bool dots: Use dots on data points. Defaults to ``False``.
+        """
         from matplotlib import dates
 
         args = request.args
@@ -421,8 +453,19 @@ if api is not None:
     @stats_api.route("/plot/activity")
     @process_figure
     def plot_activity():  # noqa
-        """Creates a GitHub-style activity chart.
+        """Plot a GitHub-style activity chart.
 
+        Note that this plot is only for a single user. For a more general
+        visualization, try :py:func:`plot_stripes()` instead.
+
+        In addition to these parameters, this requests uses:
+        - :ref:`plotting parameters <plotting>`
+        - parameters from :py:func:`message_counts_over_time()`
+
+        :param bool hatches: Mark missing data with hatches.
+                             Defaults to ``False``.
+        :param bool discrete: Use discrete colors instead of a continuous one.
+                              Defaults to ``False``.
         """
         from matplotlib import colors
         args = request.args
@@ -534,7 +577,17 @@ if api is not None:
     @stats_api.route("/plot/stripes/<sample>")
     @process_figure
     def plot_stripes(sample):  # noqa
-        """Creates a heatmap of differing categories over time."""
+        """Creates a heatmap of differing categories over time.
+
+        In addition to these parameters, this requests uses:
+        - :ref:`plotting parameters <plotting>`
+        - parameters from :py:func:`message_counts_over_time()`
+
+        :param bool hatches: Mark missing data with hatches.
+                             Defaults to ``False``.
+        :param bool color: Use this matplotlib colormap color.
+                           Defaults to ``Greens``.
+        """
         from matplotlib import dates
         args = MultiDict(request.args)
         # Set default values for the date limits.
@@ -613,6 +666,23 @@ if api is not None:
 
     @stats_api.route("/counts/topic")
     def message_count_by_topic(custom_defaults={}):  # noqa
+        """Count how many messages are posted on a topic.
+
+        :param ISOdate start: Count messages posted after this time.
+        :param ISOdate end: Count messages posted before this time.
+        :param list[str] user: Select these user IDs.
+                               If not included, all users will be selected.
+        :param list[str] topic: Select these topic IDs.
+                                If not included, all topics will be selected.
+        :param list[str] board: Select these board IDs.
+                                If not included, all boards will be selected.
+        :param bool combine_users: Combine multiple users into a single
+                                   category. Defaults to ``True``.
+        :param bool shared: Only select topics that all users have posted on.
+                            Defaults to ``False``.
+        :param key: What value to use as the key. Could be either ``topic``or
+                    ``topic_name`` (the default).
+        """
         args = request.args
 
         limit = args.get(
@@ -741,6 +811,18 @@ if api is not None:
     @stats_api.route("/plot/counts/topic")
     @process_figure
     def plot_message_count_by_topic():  # noqa
+        """Plot the message count by topic.
+
+        In addition to these parameters, this requests uses:
+        - :ref:`plotting parameters <plotting>`
+        - parameters from :py:func:`message_counts_over_topic()`
+
+        :param bool human: Use human-readable labels. Defaults to ``True``.
+        :param chart: Use this chart type. Supported types are "bar"
+                      (the default) and "pie".
+        :param bool label: Add a label to each data point.
+                           Defaults to ``False``.
+        """
         from math import isqrt
         MOSAICS = {
             1: "1",
@@ -847,6 +929,7 @@ if api is not None:
 
     @stats_api.route("/complete")
     def completeness():  # noqa
+        """Give statistics of how complete the database is."""
         cur = db.cursor()
         return {
             "message": cur.execute(
