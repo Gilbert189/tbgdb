@@ -13,7 +13,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 import re
 from functools import partial, wraps, lru_cache
-from collections import Counter
+import json  # to stringify strings
 
 
 logger = current_app.logger.getChild("more_stats")
@@ -670,14 +670,16 @@ if api is not None:
 
         :param ISOdate start: Count messages posted after this time.
         :param ISOdate end: Count messages posted before this time.
+        :param int limit: Only include this many top-posted topics.
+                          Defaults to 100.
         :param list[str] user: Select these user IDs.
                                If not included, all users will be selected.
-        :param list[str] topic: Select these topic IDs.
-                                If not included, all topics will be selected.
         :param list[str] board: Select these board IDs.
                                 If not included, all boards will be selected.
         :param bool combine_users: Combine multiple users into a single
                                    category. Defaults to ``True``.
+        :param bool others: Also count topics that exceeds the limit,
+                            categorized as ``(other)``. Defaults to ``False``.
         :param bool shared: Only select topics that all users have posted on.
                             Defaults to ``False``.
         :param key: What value to use as the key. Could be either ``topic``or
@@ -741,68 +743,58 @@ if api is not None:
         if len(user_conditions) > 100:
             raise ValueError("too much conditions")
 
-        # If necessary, assemble the topic conditions
-        topic_conditions = "1"
-        cur = db.cursor()
-        if shared_only:
-            topic_conditions = None
-            for user in user_conditions:
-                query = cur.execute(
-                    f"""
-                    select tid, count(*) as count
-                    from Messages
-                    where {user}
-                    group by tid
-                    order by count desc
-                    """
-                )
-                countie = Counter({row["tid"]: row["count"] for row in query})
-                if topic_conditions is None:
-                    topic_conditions = countie
-                else:
-                    topic_conditions &= countie
-            topic_conditions = sorted(topic_conditions.items(),
-                                      key=lambda x: x[1], reverse=True)
-            if not include_others:
-                topic_conditions = topic_conditions[:limit]
-            topic_conditions = " or ".join(
-                f"tid={k}"
-                for k, v in topic_conditions
-            )
-
-        # Read the database
+        # Query the database
         result = {}
-        for user in user_conditions:
-            query = cur.execute(
-                f"""
-                select {key_name} as key, count(*) as count
-                from Messages
-                    join Topics using (tid)
-                where ({user})
-                    and ({topic_conditions})
-                    and ({board_conditions})
-                    and ({time_conditions})
-                group by tid
-                order by count desc
-                """ + (
-                    f"limit {limit}"
-                    if not include_others
-                    else ""
-                )
+        cur = db.cursor()
+        # SQL wants quotes for names, Python uses apostrophes
+        row_names = [json.dumps(user) for user in user_conditions]
+        if shared_only:
+            having_clause = "having " + " and ".join(
+                row + ">0"
+                for row in row_names
             )
-            for i, row in enumerate(query):
-                if i < limit:
-                    category = result.setdefault(row["key"], {})
-                    category[user] = row["count"]
-                else:
-                    category = result.setdefault("(other)", {})
-                    category[user] = category.get(user, 0) + row["count"]
+        else:
+            having_clause = ""
+        order_expr = "+".join(row_names)
+        if include_others:
+            # We would handle the limiting in this function
+            limit_clause = ""
+        else:
+            # Let SQLite limit the result
+            limit_clause = f"limit {limit}"
+        query = cur.execute(
+            f"""
+            select
+                {key_name} as key,
+                {",".join(
+                    "count(case when %s then 1 else null end) as %s"
+                    % (user, row)
+                    for user, row in zip(user_conditions, row_names)
+                )}
+            from Messages
+                join Topics using (tid)
+            where ({board_conditions}) and ({time_conditions})
+            group by tid
+            {having_clause}
+            order by {order_expr} desc
+            {limit_clause}
+            """
+        )
+        for i, row in enumerate(query):
+            key = row["key"]
+            del row["key"]
+            if i < limit:
+                result[key] = row
+            else:
+                category = result.setdefault("(other)", {})
+                # TODO: rewrite this
+                for user, count in row.items():
+                    category[user] = category.get(user, 0) + count
 
         return {
             "conditions": {
                 "user": user_conditions,
                 "board": board_conditions,
-                "topic": topic_conditions,
                 "time": time_conditions,
             },
             "counts": result
