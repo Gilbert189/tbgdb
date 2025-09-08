@@ -8,4 +8,4 @@ following values in the g object:
 """
 # flake8: noqa
 
-from . import more_stats
+from . import more_stats, plots
