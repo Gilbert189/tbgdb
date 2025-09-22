@@ -48,22 +48,25 @@ except ImportError:
         "Cannot import matplotlib, plotting functions will not work"
     )
 
+
+MIME_MPL_TYPES = {
+    "image/svg+xml": "svg",
+    "application/postscript": "ps",
+    "application/pdf": "pdf",
+    "application/x-pdf": "pdf",
+    "image/png": "png",
+    "image/gif": "gif",
+}
+MPL_MIME_TYPES = {v: k for k, v in MIME_MPL_TYPES.items()}
+MAX_PLOT_DOTS = 20_000_000
+"Maximum area for plots in square dots."
+
 db = current_app.config.db
 api = g.blueprints.get("api", None)
+
+
 if api is not None:
     plots_api = Blueprint('plots', __name__, url_prefix="/plots")
-
-    MIME_MPL_TYPES = {
-        "image/svg+xml": "svg",
-        "application/postscript": "ps",
-        "application/pdf": "pdf",
-        "application/x-pdf": "pdf",
-        "image/png": "png",
-        "image/gif": "gif",
-    }
-    MPL_MIME_TYPES = {v: k for k, v in MIME_MPL_TYPES.items()}
-    MAX_PLOT_DOTS = 20_000_000
-    "Maximum area for plots in square dots."
 
     def to_human_conditions(cond):  # noqa
         "Turn SQL conditions into human-readable conditions."
