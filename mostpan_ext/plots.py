@@ -571,19 +571,19 @@ if api is not None:
                 )
                 axs[i].set_ylim(-1.5, 0.75)
                 axs[i].set_title(cond, fontsize=10)
-                axs[i].legend(
-                    labels=data.keys(),
-                    loc="lower center",
-                    ncols=(
-                        1
-                        if (
-                            args.get("key", default="topic_name")
-                            == "topic_name"
-                        )
-                        else isqrt(len(data))
-                    ),
-                    fontsize="small"
-                )
+            fig.legend(
+                labels=data.keys(),
+                loc="lower center",
+                ncols=(
+                    1
+                    if (
+                        args.get("key", default="topic_name")
+                        == "topic_name"
+                    )
+                    else isqrt(len(data))
+                ),
+                fontsize="small"
+            )
 
             return fig, 200
         else:
