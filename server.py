@@ -209,8 +209,8 @@ uptime = datetime.now()
 # a function/path parameter, it is meant for a query string.
 
 
-@api.route("/post/<mid>")
-@api.route("/message/<mid>")
+@api.route("/posts/<mid>")
+@api.route("/messages/<mid>")
 def get_message(mid):  # noqa
     """Get data of a message under a certain message ID.
 
@@ -225,7 +225,7 @@ def get_message(mid):  # noqa
     return query
 
 
-@api.route("/user/<uid>")
+@api.route("/users/<uid>")
 def get_user(uid):  # noqa
     """Get data of a user under a certain user ID.
 
@@ -240,7 +240,7 @@ def get_user(uid):  # noqa
     return query
 
 
-@api.route("/topic/<tid>")
+@api.route("/topics/<tid>")
 def get_topic(tid):  # noqa
     """Get data of a topic under a certain topic ID.
 
@@ -255,8 +255,8 @@ def get_topic(tid):  # noqa
     return query
 
 
-@api.route("/forum/<bid>")
-@api.route("/board/<bid>")
+@api.route("/forums/<bid>")
+@api.route("/boards/<bid>")
 def get_board(bid):  # noqa
     """Get data of a topic under a certain topic ID.
 
@@ -271,8 +271,8 @@ def get_board(bid):  # noqa
     return query
 
 
-@api.route("/topic/<tid>/posts")
-@api.route("/topic/<tid>/messages")
+@api.route("/topics/<tid>/posts")
+@api.route("/topics/<tid>/messages")
 def get_topic_messages(tid):  # noqa
     """Get data of all messages of a certain topic ID.
 
@@ -290,8 +290,8 @@ def get_topic_messages(tid):  # noqa
     return query
 
 
-@api.route("/forum/<bid>/topics")
-@api.route("/board/<bid>/topics")
+@api.route("/forums/<bid>/topics")
+@api.route("/boards/<bid>/topics")
 def get_board_topics(bid):  # noqa
     """Get data of all topics of a certain board ID.
 
@@ -316,6 +316,7 @@ def get_board_topics(bid):  # noqa
 
 
 @api.route("/search/messages")
+@api.route("/messages")
 def search_messages():  # noqa
     """Search for a text in a message.
 
@@ -345,6 +346,7 @@ def search_messages():  # noqa
 
 
 @api.route("/search/topics")
+@api.route("/topics")
 def search_topics():  # noqa
     """Search for a text in a topic.
 
