@@ -409,6 +409,19 @@ respect their rights.
     return res
 
 
+@api.route("/source")
+def source():
+    """Show where's the suite's source code."""
+    about_text = """
+The source code of TBGDB can be found here:
+https://github.com/Gilbert189/tbgdb
+    """.strip()
+    # You may modify this about text.
+    res = make_response(about_text)
+    res.content_type = "text/plain"
+    return res
+
+
 @api.route("/")
 def hello():  # noqa
     """Show some example queries."""
