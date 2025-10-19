@@ -15,7 +15,7 @@ from requests.exceptions import RequestException
 from my_secrets.tbgs import clicky  # change this to something else
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 # Here is the configuration for the scraper.
