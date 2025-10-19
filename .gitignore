@@ -3,3 +3,4 @@ tbgs.db-shm
 tbgs.db-wal
 .vscode/
 __pycache__/
+backup/
