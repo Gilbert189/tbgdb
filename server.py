@@ -6,6 +6,8 @@ import re
 from flask import Blueprint, request, url_for, make_response, current_app, g
 from werkzeug.exceptions import HTTPException
 
+from _creator import app_creator
+
 api = Blueprint("api", __name__)
 
 
@@ -434,19 +436,11 @@ def hello():  # noqa
     }
 
 
-def create_app():  # noqa
-    from flask import Flask
-    app = Flask(__name__)
+def build_config(app):  # noqa
+    app.config.db = db  # please don't scream at me
+    app.config.other_api_examples = {}
+    g.blueprints["api"] = api
+    build_fts()
 
-    with app.app_context():
-        app.config.db = db  # please don't scream at me
-        g.blueprints = {
-            "api": api
-        }
-        app.config.other_api_examples = {}
-        build_fts()
-        import mostpan_ext  # noqa
 
-    app.register_blueprint(api)
-
-    return app
+create_app = app_creator([build_config])
