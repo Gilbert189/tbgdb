@@ -145,17 +145,29 @@ create virtual table if not exists TopicFTS using fts5(
 );
 create trigger if not exists TopicFTS_insert after insert on Topics begin
     insert into TopicFTS (rowid, topic_name, board_name)
-        values (new.tid, new.topic_name, new.board_name);
+        values (new.tid, new.topic_name, (
+            select board_name from Boards
+            where bid=new.bid
+        ));
 end;
 create trigger if not exists TopicFTS_delete after delete on Topics begin
     insert into TopicFTS (TopicFTS, rowid, topic_name, board_name)
-        values ('delete', old.tid, old.topic_name, old.board_name);
+        values ('delete', old.tid, old.topic_name, (
+            select board_name from Boards
+            where bid=old.bid
+        ));
 end;
 create trigger if not exists TopicFTS_update after update on Topics begin
     insert into TopicFTS (TopicFTS, rowid, topic_name, board_name)
-        values ('delete', old.tid, old.topic_name, old.board_name);
+        values ('delete', old.tid, old.topic_name, (
+            select board_name from Boards
+            where bid=old.bid
+        ));
     insert into TopicFTS (rowid, topic_name, board_name)
-        values (new.tid, new.topic_name, new.board_name);
+        values (new.tid, new.topic_name, (
+            select board_name from Boards
+            where bid=old.bid
+        ));
 end;
 insert into TopicFTS (TopicFTS) values ('rebuild');
     """)
