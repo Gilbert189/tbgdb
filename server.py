@@ -428,7 +428,7 @@ def source():
 The source code of TBGDB can be found here:
 https://github.com/Gilbert189/tbgdb
     """.strip()
-    # You may modify this about text.
+    # You may modify this text.
     res = make_response(about_text)
     res.content_type = "text/plain"
     return res
@@ -453,6 +453,7 @@ def hello():  # noqa
                 url_for(".get_topic_messages", tid="$tid"),
             "get_topics_on_board":
                 url_for(".get_board_topics", bid="$bid"),
+            "get_source": url_for(".source"),
             **{
                 k: v()
                 for k, v in current_app.config.other_api_examples.items()
