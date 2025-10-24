@@ -68,23 +68,27 @@ api = g.blueprints.get("api", None)
 if api is not None:
     plots_api = Blueprint('plots', __name__, url_prefix="/plots")
 
+    # To make the cache actually work, it has to be outside the function
+    topic_cache = lru_cache(1000)
+    user_cache = lru_cache(1000)
+    board_cache = lru_cache(1000)
     def to_human_conditions(cond):  # noqa
         "Turn SQL conditions into human-readable conditions."
         cur = db.cursor()
 
-        @lru_cache(1000)
+        @topic_cache
         def topic(match):  # noqa
             return cur.execute("select topic_name from Topics where tid=?",
                                (int(match.group(1)),)).fetchone()["topic_name"]
         cond = re.sub(r"tid=(\d+)", topic, cond)
 
-        @lru_cache(1000)
+        @user_cache
         def user(match):  # noqa
             return cur.execute("select name from Users where uid=?",
                                (int(match.group(1)),)).fetchone()["name"]
         cond = re.sub(r"user=(\d+)", user, cond)
 
-        @lru_cache(1000)
+        @board_cache
         def board(match):  # noqa
             return cur.execute("select board_name from Boards where bid=?",
                                (int(match.group(1)),)).fetchone()["board_name"]
