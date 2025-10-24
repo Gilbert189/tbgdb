@@ -166,7 +166,7 @@ create trigger if not exists TopicFTS_update after update on Topics begin
     insert into TopicFTS (rowid, topic_name, board_name)
         values (new.tid, new.topic_name, (
             select board_name from Boards
-            where bid=old.bid
+            where bid=new.bid
         ));
 end;
 insert into TopicFTS (TopicFTS) values ('rebuild');
