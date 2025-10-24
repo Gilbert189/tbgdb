@@ -95,6 +95,9 @@ if api is not None:
                                (int(match.group(1)),)).fetchone()["board_name"]
         cond = re.sub(r"bid=(\d+)", board, cond)
 
+        if cond == "1":
+            cond = "all"
+
         return cond
 
     def make_figure(**kwargs):  # noqa
