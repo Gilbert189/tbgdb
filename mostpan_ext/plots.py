@@ -43,6 +43,7 @@ try:
     import matplotlib  # noqa
     import numpy as np
     matplotlib.use('agg')
+
 except ImportError:
     logger.warning(
         "Cannot import matplotlib, plotting functions will not work"
@@ -209,8 +210,10 @@ if api is not None:
             else dates.HourLocator()
             # if sample == "hourly"
         )
-        ax.xaxis.set_major_locator(
-            dates.AutoDateLocator(maxticks=round(fig.get_figwidth()))
+        locator = dates.AutoDateLocator(maxticks=round(fig.get_figwidth()))
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(
+            dates.AutoDateFormatter(locator)
         )
         ax.set_ylabel(
             "Posts"
