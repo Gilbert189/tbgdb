@@ -1,9 +1,17 @@
+import logging
+
 from flask import g
 
 import server as api
 from _creator import app_creator
 
 
+# NOTE: if your WSGI server already setups logging by itself, you can comment
+# this line
+logging.basicConfig(
+    format="%(levelname)s@%(name)s: %(message)s",
+    level=logging.INFO
+)
 # TODO: the website of TBGDB
 
 
