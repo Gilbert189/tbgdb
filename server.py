@@ -3,7 +3,9 @@ from datetime import datetime
 import json
 import re
 
-from flask import Blueprint, request, url_for, make_response, current_app, g
+from flask import (
+    Blueprint, request, url_for, make_response, current_app, g, Response
+)
 from werkzeug.exceptions import HTTPException
 
 from _creator import app_creator
@@ -235,7 +237,7 @@ def get_message(mid):  # noqa
     query = query.fetchone()
 
     if query is None:
-        return query, 404
+        return Response("null", 404, mimetype="application/json")
     return query
 
 
@@ -250,7 +252,7 @@ def get_user(uid):  # noqa
     query = query.fetchone()
 
     if query is None:
-        return query, 404
+        return Response("null", 404, mimetype="application/json")
     return query
 
 
@@ -265,7 +267,7 @@ def get_topic(tid):  # noqa
     query = query.fetchone()
 
     if query is None:
-        return query, 404
+        return Response("null", 404, mimetype="application/json")
     return query
 
 
@@ -281,7 +283,7 @@ def get_board(bid):  # noqa
     query = query.fetchone()
 
     if query is None:
-        return query, 404
+        return Response("null", 404, mimetype="application/json")
     return query
 
 
