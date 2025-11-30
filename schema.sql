@@ -17,18 +17,21 @@ create table if not exists Users (
 	website text,
 	gender text,
 	first_scraped datetime default (datetime()),
-	last_scraped datetime
+	last_scraped datetime,
+	url text as (concat('https://tbgforums.com/forums/index.php?action=profile;u=', uid))
 ) without rowid;
 
 create table if not exists Boards (
 	bid integer primary key not null,
-	board_name text
+	board_name text,
+	url text as (concat('https://tbgforums.com/forums/index.php?board=', bid))
 ) without rowid;
 
 create table if not exists Topics (
 	tid integer primary key not null,
 	topic_name text,
-	bid integer references Boards(bid)
+	bid integer references Boards(bid),
+	url text as (concat('https://tbgforums.com/forums/index.php?topic=', tid))
 ) without rowid;
 
 create table if not exists Messages (
@@ -42,7 +45,8 @@ create table if not exists Messages (
 	tid integer references Topics(tid),
 	first_scraped datetime default (datetime()),
 	last_scraped datetime,
-	deleted boolean default false
+	deleted boolean default false,
+	url text as (concat('https://tbgforums.com/forums/index.php?msg=', mid))
 ) without rowid;
 
 create table if not exists Statistics (
