@@ -20,7 +20,7 @@ MAX_BACKUPS = 4
 "How much backups to store."
 
 
-db = current_app.config.db
+init_db = current_app.config.init_db
 clock_running = Event()
 
 
@@ -83,7 +83,8 @@ def make_backup():  # noqa
             " file so that TBGDB can backup the database properly."
         )
         return
-    db.execute("vacuum into ?", (str(new_db_file),))
+    with init_db() as db:
+        db.execute("vacuum into ?", (str(new_db_file),))
     with new_db_file.open("rb") as f:
         digest = hashlib.file_digest(f, "md5")
         backup_hash = digest.hexdigest()

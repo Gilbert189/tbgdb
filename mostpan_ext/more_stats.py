@@ -13,7 +13,7 @@ import json  # to stringify strings
 logger = current_app.logger.getChild("more_stats")
 
 
-db = current_app.config.db
+init_db = current_app.config.init_db
 api = g.blueprints.get("api", None)
 if api is not None:
     stats_api = Blueprint('stats', __name__, url_prefix="/stats")
@@ -188,28 +188,29 @@ if api is not None:
             }
         else:
             result = {}
-        cur = db.cursor()
-        query = cur.execute(
-            f"""
-            select
-                strftime(:datefmt, date) as time,
-                {",".join(
-                    ("%s as %%s" % count_criteria)
-                    % (cond, repr(cond))
-                    for cond in combinations
-                )}
-            from Messages
-                join Topics using (tid)
-                join Boards using (bid)
-            where ({time_conditions})
-            group by time
-            """,
-            {"datefmt": DATE_FORMATS[sample]}
-        ).fetchall()
-        for item in query:
-            time = item["time"]
-            del item["time"]
-            result[time] = item
+        with init_db() as db:
+            cur = db.cursor()
+            query = cur.execute(
+                f"""
+                select
+                    strftime(:datefmt, date) as time,
+                    {",".join(
+                        ("%s as %%s" % count_criteria)
+                        % (cond, repr(cond))
+                        for cond in combinations
+                    )}
+                from Messages
+                    join Topics using (tid)
+                    join Boards using (bid)
+                where ({time_conditions})
+                group by time
+                """,
+                {"datefmt": DATE_FORMATS[sample]}
+            ).fetchall()
+            for item in query:
+                time = item["time"]
+                del item["time"]
+                result[time] = item
         # Fill missing values with either:
         # - zero if we're not taking a running sum, or
         # - the last value if we're taking one
@@ -315,52 +316,53 @@ if api is not None:
             raise ValueError("too much conditions")
 
         # Query the database
-        result = {}
-        cur = db.cursor()
-        # SQL wants quotes for names, Python uses apostrophes
-        row_names = [json.dumps(user) for user in user_conditions]
-        if shared_only:
-            having_clause = "having " + " and ".join(
-                row + ">0"
-                for row in row_names
-            )
-        else:
-            having_clause = ""
-        order_expr = "+".join(row_names)
-        if include_others:
-            # We would handle the limiting in this function
-            limit_clause = ""
-        else:
-            # Let SQLite limit the result
-            limit_clause = f"limit {limit}"
-        query = cur.execute(
-            f"""
-            select
-                {key_name} as key,
-                {",".join(
-                    "count(case when %s then 1 else null end) as %s"
-                    % (user, row)
-                    for user, row in zip(user_conditions, row_names)
-                )}
-            from Messages
-                join Topics using (tid)
-            where ({board_conditions}) and ({time_conditions})
-            group by tid
-            {having_clause}
-            order by {order_expr} desc
-            {limit_clause}
-            """
-        )
-        for i, row in enumerate(query):
-            key = row["key"]
-            del row["key"]
-            if i < limit:
-                result[key] = row
+        with init_db() as db:
+            result = {}
+            cur = db.cursor()
+            # SQL wants quotes for names, Python uses apostrophes
+            row_names = [json.dumps(user) for user in user_conditions]
+            if shared_only:
+                having_clause = "having " + " and ".join(
+                    row + ">0"
+                    for row in row_names
+                )
             else:
-                category = result.setdefault("(other)", {})
-                # TODO: rewrite this
-                for user, count in row.items():
-                    category[user] = category.get(user, 0) + count
+                having_clause = ""
+            order_expr = "+".join(row_names)
+            if include_others:
+                # We would handle the limiting in this function
+                limit_clause = ""
+            else:
+                # Let SQLite limit the result
+                limit_clause = f"limit {limit}"
+            query = cur.execute(
+                f"""
+                select
+                    {key_name} as key,
+                    {",".join(
+                        "count(case when %s then 1 else null end) as %s"
+                        % (user, row)
+                        for user, row in zip(user_conditions, row_names)
+                    )}
+                from Messages
+                    join Topics using (tid)
+                where ({board_conditions}) and ({time_conditions})
+                group by tid
+                {having_clause}
+                order by {order_expr} desc
+                {limit_clause}
+                """
+            )
+            for i, row in enumerate(query):
+                key = row["key"]
+                del row["key"]
+                if i < limit:
+                    result[key] = row
+                else:
+                    category = result.setdefault("(other)", {})
+                    # TODO: rewrite this
+                    for user, count in row.items():
+                        category[user] = category.get(user, 0) + count
 
         return {
             "conditions": {
@@ -374,25 +376,26 @@ if api is not None:
     @stats_api.route("/complete")
     def completeness():  # noqa
         """Give statistics of how complete the database is."""
-        cur = db.cursor()
-        return {
-            "message": cur.execute(
-                """
-                select
-                    (1.0 * count(content) / count(*)) as filled_content,
-                    (1.0 * count(*) / max(mid)) as existing_posts
-                from Messages
-                """
-            ).fetchone(),
-            "topic": cur.execute(
-                """
-                select
-                    (1.0 * count(topic_name) / count(*)) as filled_names,
-                    (1.0 * count(*) / max(tid)) as existing_topics
-                from Topics
-                """
-            ).fetchone(),
-        }
+        with init_db() as db:
+            cur = db.cursor()
+            return {
+                "message": cur.execute(
+                    """
+                    select
+                        (1.0 * count(content) / count(*)) as filled_content,
+                        (1.0 * count(*) / max(mid)) as existing_posts
+                    from Messages
+                    """
+                ).fetchone(),
+                "topic": cur.execute(
+                    """
+                    select
+                        (1.0 * count(topic_name) / count(*)) as filled_names,
+                        (1.0 * count(*) / max(tid)) as existing_topics
+                    from Topics
+                    """
+                ).fetchone(),
+            }
 
     current_app.config.other_api_examples.update({
         "message_counts_over_time":

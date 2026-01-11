@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime
 import json
 import re
+from contextlib import contextmanager
 
 from flask import (
     Blueprint, request, url_for, make_response, current_app, g, Response
@@ -20,112 +21,88 @@ PAGE_SIZE = 25
 "Size of one page."
 
 
-db = sqlite3.connect(
-    DB_FILE,
-    check_same_thread=False,
-    detect_types=sqlite3.PARSE_DECLTYPES
-)
-sqlite3.register_adapter(datetime,
-                         lambda dt: dt.isoformat(timespec='seconds'))
-# sqlite3.register_converter("datetime",
-#                            lambda dt: datetime.fromisoformat(dt.decode()))
-sqlite3.register_adapter(dict,
-                         lambda obj: json.dumps(obj))
-sqlite3.register_converter("json",
-                           lambda obj: json.loads(obj))
-
-
 def dict_factory(cursor, row):  # noqa
     fields = [column[0] for column in cursor.description]
     return {key: value for key, value in zip(fields, row)}
-db.row_factory = dict_factory # noqa
+
+
+@contextmanager
+def init_db():
+    db = sqlite3.connect(
+        DB_FILE,
+        check_same_thread=False,
+        detect_types=sqlite3.PARSE_DECLTYPES
+    )
+    sqlite3.register_adapter(datetime,
+                             lambda dt: dt.isoformat(timespec='seconds'))
+    sqlite3.register_adapter(dict,
+                             lambda obj: json.dumps(obj))
+    sqlite3.register_converter("json",
+                               lambda obj: json.loads(obj))
+    db.row_factory = dict_factory # noqa
+
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def build_fts(force_rebuild=False):  # noqa
-    if not force_rebuild:
-        cur = db.cursor()
-        tables = {
-            row["name"]
-            for row in cur.execute("select name from sqlite_master").fetchall()
-        }
-        required_tables = (
-            {
-                "MessageView", "TopicView",
-                "MessageIndex_date", "MessageIndex_user", "MessageIndex_topic",
-                "TopicIndex"
+    with init_db() as db:
+        if not force_rebuild:
+            cur = db.cursor()
+            tables = {
+                row["name"]
+                for row in (
+                    cur.execute("select name from sqlite_master")
+                    .fetchall()
+                )
             }
-            | {
-                table + trigger
-                for table in ["MessageFTS", "TopicFTS"]
-                for trigger in ["", "_insert", "_update", "_delete"]
-            }
-        )
-        if tables > required_tables:
-            current_app.logger.info("FTS tables exists, not building again.")
-            return
+            required_tables = (
+                {
+                    "MessageView", "TopicView",
+                    "MessageIndex_date", "MessageIndex_user",
+                    "MessageIndex_topic",
+                    "TopicIndex"
+                }
+                | {
+                    table + trigger
+                    for table in ["MessageFTS", "TopicFTS"]
+                    for trigger in ["", "_insert", "_update", "_delete"]
+                }
+            )
+            if tables > required_tables:
+                current_app.logger.info(
+                    "FTS tables exists, not building again."
+                )
+                return
 
-    current_app.logger.info("Building FTS tables")
-    db.executescript("""
--- for unconditional message counts
-create index if not exists MessageIndex_date on Messages (date);
--- for conditional message counts
-create index if not exists MessageIndex_user on Messages (user, date, tid);
-create index if not exists MessageIndex_topic on Messages (tid, date, user);
-analyze Messages;
-create index if not exists TopicIndex on Topics (bid);
-analyze Topics;
+        current_app.logger.info("Building FTS tables")
+        db.executescript("""
+    -- for unconditional message counts
+    create index if not exists MessageIndex_date on Messages (date);
+    -- for conditional message counts
+    create index if not exists MessageIndex_user on Messages (user, date, tid);
+    create index if not exists MessageIndex_topic on Messages (tid, date,user);
+    analyze Messages;
+    create index if not exists TopicIndex on Topics (bid);
+    analyze Topics;
 
-create view if not exists MessageView as
-    select mid, subject, content, name as username, topic_name, board_name
-    from Messages
-        join Topics using (tid)
-        join Boards using (bid)
-        join Users on Messages.user=Users.uid;
-create virtual table if not exists MessageFTS using fts5(
-    subject, content, username, topic_name, board_name,
-    content=MessageView,
-    content_rowid=mid
-);
-create trigger if not exists MessageFTS_insert after insert on Messages begin
-    insert into MessageFTS
-        (rowid, subject, content, username, topic_name, board_name)
-    values (
-        new.mid, new.subject, new.content,
-        (select name from Users where uid=new.user),
-        (select topic_name from Topics where tid=new.tid),
-        (select board_name
-            from Boards
-                join Topics using (bid)
-            where tid=new.tid)
+    create view if not exists MessageView as
+        select mid, subject, content, name as username, topic_name, board_name
+        from Messages
+            join Topics using (tid)
+            join Boards using (bid)
+            join Users on Messages.user=Users.uid;
+    create virtual table if not exists MessageFTS using fts5(
+        subject, content, username, topic_name, board_name,
+        content=MessageView,
+        content_rowid=mid
     );
-end;
-create trigger if not exists MessageFTS_delete after delete on Messages begin
-    insert into MessageFTS
-        (MessageFTS, rowid, subject, content, username, topic_name, board_name)
-    values (
-        'delete', old.mid, old.subject, old.content,
-        (select name from Users where uid=old.user),
-        (select topic_name from Topics where tid=old.tid),
-        (select board_name
-            from Boards
-                join Topics using (bid)
-            where tid=old.tid)
-    );
-end;
-create trigger if not exists MessageFTS_update after update on Messages begin
-    insert into MessageFTS
-        (MessageFTS, rowid, subject, content, username, topic_name, board_name)
-        values (
-            'delete', old.mid, old.subject, old.content,
-            (select name from Users where uid=old.user),
-            (select topic_name from Topics where tid=old.tid),
-            (select board_name
-                from Boards
-                    join Topics using (bid)
-                where tid=old.tid)
-        );
-    insert into MessageFTS
-        (rowid, subject, content, username, topic_name, board_name)
+    create trigger if not exists MessageFTS_insert after insert on Messages
+    begin
+        insert into MessageFTS
+            (rowid, subject, content, username, topic_name, board_name)
         values (
             new.mid, new.subject, new.content,
             (select name from Users where uid=new.user),
@@ -135,45 +112,89 @@ create trigger if not exists MessageFTS_update after update on Messages begin
                     join Topics using (bid)
                 where tid=new.tid)
         );
-end;
-insert into MessageFTS (MessageFTS) values ('rebuild');
+    end;
+    create trigger if not exists MessageFTS_delete after delete on Messages
+    begin
+        insert into MessageFTS
+            (MessageFTS, rowid, subject, content, username, topic_name,
+             board_name)
+        values (
+            'delete', old.mid, old.subject, old.content,
+            (select name from Users where uid=old.user),
+            (select topic_name from Topics where tid=old.tid),
+            (select board_name
+                from Boards
+                    join Topics using (bid)
+                where tid=old.tid)
+        );
+    end;
+    create trigger if not exists MessageFTS_update after update on Messages
+    begin
+        insert into MessageFTS
+            (MessageFTS, rowid, subject, content, username, topic_name,
+             board_name)
+            values (
+                'delete', old.mid, old.subject, old.content,
+                (select name from Users where uid=old.user),
+                (select topic_name from Topics where tid=old.tid),
+                (select board_name
+                    from Boards
+                        join Topics using (bid)
+                    where tid=old.tid)
+            );
+        insert into MessageFTS
+            (rowid, subject, content, username, topic_name, board_name)
+            values (
+                new.mid, new.subject, new.content,
+                (select name from Users where uid=new.user),
+                (select topic_name from Topics where tid=new.tid),
+                (select board_name
+                    from Boards
+                        join Topics using (bid)
+                    where tid=new.tid)
+            );
+    end;
+    insert into MessageFTS (MessageFTS) values ('rebuild');
 
-create view if not exists TopicView as
-    select tid, topic_name, board_name
-    from Topics
-        full join Boards using (bid);
-create virtual table if not exists TopicFTS using fts5(
-    topic_name, board_name,
-    content=TopicView,
-    content_rowid=tid
-);
-create trigger if not exists TopicFTS_insert after insert on Topics begin
-    insert into TopicFTS (rowid, topic_name, board_name)
-        values (new.tid, new.topic_name, (
-            select board_name from Boards
-            where bid=new.bid
-        ));
-end;
-create trigger if not exists TopicFTS_delete after delete on Topics begin
-    insert into TopicFTS (TopicFTS, rowid, topic_name, board_name)
-        values ('delete', old.tid, old.topic_name, (
-            select board_name from Boards
-            where bid=old.bid
-        ));
-end;
-create trigger if not exists TopicFTS_update after update on Topics begin
-    insert into TopicFTS (TopicFTS, rowid, topic_name, board_name)
-        values ('delete', old.tid, old.topic_name, (
-            select board_name from Boards
-            where bid=old.bid
-        ));
-    insert into TopicFTS (rowid, topic_name, board_name)
-        values (new.tid, new.topic_name, (
-            select board_name from Boards
-            where bid=new.bid
-        ));
-end;
-insert into TopicFTS (TopicFTS) values ('rebuild');
+    create view if not exists TopicView as
+        select tid, topic_name, board_name
+        from Topics
+            full join Boards using (bid);
+    create virtual table if not exists TopicFTS using fts5(
+        topic_name, board_name,
+        content=TopicView,
+        content_rowid=tid
+    );
+    create trigger if not exists TopicFTS_insert after insert on Topics
+    begin
+        insert into TopicFTS (rowid, topic_name, board_name)
+            values (new.tid, new.topic_name, (
+                select board_name from Boards
+                where bid=new.bid
+            ));
+    end;
+    create trigger if not exists TopicFTS_delete after delete on Topics
+    begin
+        insert into TopicFTS (TopicFTS, rowid, topic_name, board_name)
+            values ('delete', old.tid, old.topic_name, (
+                select board_name from Boards
+                where bid=old.bid
+            ));
+    end;
+    create trigger if not exists TopicFTS_update after update on Topics
+    begin
+        insert into TopicFTS (TopicFTS, rowid, topic_name, board_name)
+            values ('delete', old.tid, old.topic_name, (
+                select board_name from Boards
+                where bid=old.bid
+            ));
+        insert into TopicFTS (rowid, topic_name, board_name)
+            values (new.tid, new.topic_name, (
+                select board_name from Boards
+                where bid=new.bid
+            ));
+    end;
+    insert into TopicFTS (TopicFTS) values ('rebuild');
     """)
 
 
@@ -234,9 +255,10 @@ def get_message(mid):  # noqa
 
     :param mid: The message ID.
     """
-    cur = db.cursor()
-    query = cur.execute("select * from Messages where mid=?", (mid,))
-    query = query.fetchone()
+    with init_db() as db:
+        cur = db.cursor()
+        query = cur.execute("select * from Messages where mid=?", (mid,))
+        query = query.fetchone()
 
     if query is None:
         return Response("null", 404, mimetype="application/json")
@@ -249,9 +271,10 @@ def get_user(uid):  # noqa
 
     :param uid: The user ID.
     """
-    cur = db.cursor()
-    query = cur.execute("select * from Users where uid=?", (uid,))
-    query = query.fetchone()
+    with init_db() as db:
+        cur = db.cursor()
+        query = cur.execute("select * from Users where uid=?", (uid,))
+        query = query.fetchone()
 
     if query is None:
         return Response("null", 404, mimetype="application/json")
@@ -264,9 +287,10 @@ def get_topic(tid):  # noqa
 
     :param tid: The topic ID.
     """
-    cur = db.cursor()
-    query = cur.execute("select * from Topics where tid=?", (tid,))
-    query = query.fetchone()
+    with init_db() as db:
+        cur = db.cursor()
+        query = cur.execute("select * from Topics where tid=?", (tid,))
+        query = query.fetchone()
 
     if query is None:
         return Response("null", 404, mimetype="application/json")
@@ -280,9 +304,10 @@ def get_board(bid):  # noqa
 
     :param tid: The topic ID.
     """
-    cur = db.cursor()
-    query = cur.execute("select * from Boards where bid=?", (bid,))
-    query = query.fetchone()
+    with init_db() as db:
+        cur = db.cursor()
+        query = cur.execute("select * from Boards where bid=?", (bid,))
+        query = query.fetchone()
 
     if query is None:
         return Response("null", 404, mimetype="application/json")
@@ -299,14 +324,15 @@ def get_topic_messages(tid):  # noqa
     """
     page = max(request.args.get("p", None, int) - 1, 0)
 
-    cur = db.cursor()
-    query = cur.execute(
-        "select * from Messages where tid=? order by mid asc"
-        + (" limit ? offset ?" if page is not None else ""),
-        (tid,)
-        + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
-    )
-    query = query.fetchall()
+    with init_db() as db:
+        cur = db.cursor()
+        query = cur.execute(
+            "select * from Messages where tid=? order by mid asc"
+            + (" limit ? offset ?" if page is not None else ""),
+            (tid,)
+            + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
+        )
+        query = query.fetchall()
 
     if query == []:
         return query, 404
@@ -323,20 +349,21 @@ def get_board_topics(bid):  # noqa
     """
     page = max(request.args.get("p", None, int) - 1, 0)
 
-    cur = db.cursor()
-    query = cur.execute(
-        """
-        select tid, topic_name, max(mid) as latest_post
-        from Topics
-            join Messages using (tid)
-        where bid=?
-        group by tid
-        order by latest_post desc"""
-        + (" limit ? offset ?" if page is not None else ""),
-        (bid,)
-        + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
-    )
-    query = query.fetchall()
+    with init_db() as db:
+        cur = db.cursor()
+        query = cur.execute(
+            """
+            select tid, topic_name, max(mid) as latest_post
+            from Topics
+                join Messages using (tid)
+            where bid=?
+            group by tid
+            order by latest_post desc"""
+            + (" limit ? offset ?" if page is not None else ""),
+            (bid,)
+            + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
+        )
+        query = query.fetchall()
 
     if query == []:
         return query, 404
@@ -359,18 +386,19 @@ def search_messages():  # noqa
         return {"ValueError": "at least a query is required"}, 400
     page = max(request.args.get("p", None, int) - 1, 0)
 
-    cur = db.cursor()
-    status_code = 200
-    try:
-        query = cur.execute(
-            "select rowid as mid, * from MessageFTS(?)"
-            + (" limit ? offset ?" if page is not None else ""),
-            (args,)
-            + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
-        )
-        query = query.fetchall()
-    except sqlite3.Error as e:
-        return {type(e).__name__: str(e)}, 400
+    with init_db() as db:
+        cur = db.cursor()
+        status_code = 200
+        try:
+            query = cur.execute(
+                "select rowid as mid, * from MessageFTS(?)"
+                + (" limit ? offset ?" if page is not None else ""),
+                (args,)
+                + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
+            )
+            query = query.fetchall()
+        except sqlite3.Error as e:
+            return {type(e).__name__: str(e)}, 400
 
     if query == []:
         status_code = 404
@@ -393,18 +421,19 @@ def search_topics():  # noqa
         return {"ValueError": "at least a query is required"}, 400
     page = max(request.args.get("p", None, int) - 1, 0)
 
-    cur = db.cursor()
-    status_code = 200
-    try:
-        query = cur.execute(
-            "select rowid as tid, * from TopicFTS(?)"
-            + (" limit ? offset ?" if page is not None else ""),
-            (args,)
-            + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
-        )
-        query = query.fetchall()
-    except sqlite3.Error as e:
-        return {type(e).__name__: str(e)}, 400
+    with init_db() as db:
+        cur = db.cursor()
+        status_code = 200
+        try:
+            query = cur.execute(
+                "select rowid as tid, * from TopicFTS(?)"
+                + (" limit ? offset ?" if page is not None else ""),
+                (args,)
+                + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
+            )
+            query = query.fetchall()
+        except sqlite3.Error as e:
+            return {type(e).__name__: str(e)}, 400
 
     if query == []:
         status_code = 404
@@ -417,9 +446,10 @@ def statistics():  # noqa
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
 
-    cur = db.cursor()
-    query = cur.execute("select key, value from Statistics")
-    query = {pair["key"]: pair["value"] for pair in query.fetchall()}
+    with init_db() as db:
+        cur = db.cursor()
+        query = cur.execute("select key, value from Statistics")
+        query = {pair["key"]: pair["value"] for pair in query.fetchall()}
 
     return query
 
@@ -485,7 +515,7 @@ def hello():  # noqa
 
 
 def build_config(app):  # noqa
-    app.config.db = db  # please don't scream at me
+    app.config.init_db = init_db  # please don't scream at me
     app.config.other_api_examples = {}
     g.blueprints["api"] = api
     build_fts()

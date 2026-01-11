@@ -62,7 +62,7 @@ MPL_MIME_TYPES = {v: k for k, v in MIME_MPL_TYPES.items()}
 MAX_PLOT_DOTS = 20_000_000
 "Maximum area for plots in square dots."
 
-db = current_app.config.db
+init_db = current_app.config.init_db
 api = g.blueprints.get("api", None)
 
 
@@ -75,25 +75,32 @@ if api is not None:
     board_cache = lru_cache(1000)
     def to_human_conditions(cond):  # noqa
         "Turn SQL conditions into human-readable conditions."
-        cur = db.cursor()
+        with init_db() as db:
+            cur = db.cursor()
 
-        @topic_cache
-        def topic(match):  # noqa
-            return cur.execute("select topic_name from Topics where tid=?",
-                               (int(match.group(1)),)).fetchone()["topic_name"]
-        cond = re.sub(r"tid=(\d+)", topic, cond)
+            @topic_cache
+            def topic(match):  # noqa
+                return cur.execute(
+                    "select topic_name from Topics where tid=?",
+                    (int(match.group(1)),)
+                ).fetchone()["topic_name"]
+            cond = re.sub(r"tid=(\d+)", topic, cond)
 
-        @user_cache
-        def user(match):  # noqa
-            return cur.execute("select name from Users where uid=?",
-                               (int(match.group(1)),)).fetchone()["name"]
-        cond = re.sub(r"user=(\d+)", user, cond)
+            @user_cache
+            def user(match):  # noqa
+                return cur.execute(
+                    "select name from Users where uid=?",
+                    (int(match.group(1)),)
+                ).fetchone()["name"]
+            cond = re.sub(r"user=(\d+)", user, cond)
 
-        @board_cache
-        def board(match):  # noqa
-            return cur.execute("select board_name from Boards where bid=?",
-                               (int(match.group(1)),)).fetchone()["board_name"]
-        cond = re.sub(r"bid=(\d+)", board, cond)
+            @board_cache
+            def board(match):  # noqa
+                return cur.execute(
+                    "select board_name from Boards where bid=?",
+                    (int(match.group(1)),)
+                ).fetchone()["board_name"]
+            cond = re.sub(r"bid=(\d+)", board, cond)
 
         if cond == "1":
             cond = "all"
