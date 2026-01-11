@@ -16,6 +16,8 @@ api = Blueprint("api", __name__)
 # Here is the configuration for the API server.
 DB_FILE = "tbgs.db"
 "Database to store the scraped data."
+PAGE_SIZE = 25
+"Size of one page."
 
 
 db = sqlite3.connect(
@@ -293,11 +295,16 @@ def get_topic_messages(tid):  # noqa
     """Get data of all messages of a certain topic ID.
 
     :param tid: The topic ID.
+    :param p: If present, only show this page of results.
     """
+    page = max(request.args.get("p", None, int) - 1, 0)
+
     cur = db.cursor()
     query = cur.execute(
-        "select * from Messages where tid=? order by mid asc",
+        "select * from Messages where tid=? order by mid asc"
+        + (" limit ? offset ?" if page is not None else ""),
         (tid,)
+        + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
     )
     query = query.fetchall()
 
@@ -312,7 +319,10 @@ def get_board_topics(bid):  # noqa
     """Get data of all topics of a certain board ID.
 
     :param bid: The board ID.
+    :param p: If present, only show this page of results.
     """
+    page = max(request.args.get("p", None, int) - 1, 0)
+
     cur = db.cursor()
     query = cur.execute(
         """
@@ -321,8 +331,10 @@ def get_board_topics(bid):  # noqa
             join Messages using (tid)
         where bid=?
         group by tid
-        order by latest_post desc""",
+        order by latest_post desc"""
+        + (" limit ? offset ?" if page is not None else ""),
         (bid,)
+        + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
     )
     query = query.fetchall()
 
@@ -337,6 +349,7 @@ def search_messages():  # noqa
     """Search for a text in a message.
 
     :param q: The text to search.
+    :param p: If present, only show this page of results.
     """
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
@@ -344,13 +357,16 @@ def search_messages():  # noqa
     args = request.args.to_dict().get("q", "")
     if len(args) == 0:
         return {"ValueError": "at least a query is required"}, 400
+    page = max(request.args.get("p", None, int) - 1, 0)
 
     cur = db.cursor()
     status_code = 200
     try:
         query = cur.execute(
-            "select rowid as mid, * from MessageFTS(?)",
+            "select rowid as mid, * from MessageFTS(?)"
+            + (" limit ? offset ?" if page is not None else ""),
             (args,)
+            + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
         )
         query = query.fetchall()
     except sqlite3.Error as e:
@@ -367,6 +383,7 @@ def search_topics():  # noqa
     """Search for a text in a topic.
 
     :param q: The text to search.
+    :param p: If present, only show this page of results.
     """
     def sanitize(x):  # noqa
         return re.sub(r"\W", "_", x)
@@ -374,13 +391,16 @@ def search_topics():  # noqa
     args = request.args.to_dict().get("q", "")
     if len(args) == 0:
         return {"ValueError": "at least a query is required"}, 400
+    page = max(request.args.get("p", None, int) - 1, 0)
 
     cur = db.cursor()
     status_code = 200
     try:
         query = cur.execute(
-            "select rowid as tid, * from TopicFTS(?)",
+            "select rowid as tid, * from TopicFTS(?)"
+            + (" limit ? offset ?" if page is not None else ""),
             (args,)
+            + ((PAGE_SIZE, page * PAGE_SIZE) if page is not None else ())
         )
         query = query.fetchall()
     except sqlite3.Error as e:
