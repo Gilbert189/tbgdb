@@ -358,7 +358,8 @@ try:
                 "limit": REVIEW_SIZE,
             }
         )
-        for mid, _ in query:
+        review_mids = query.fetchall()
+        for mid, _ in review_mids:
             try:
                 res = retry_on_error(api.get_message_page)(session, mid)
             except TBGRequestError:
