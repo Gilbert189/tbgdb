@@ -232,7 +232,7 @@ logger.info("Entering main loop.")
 try:
     for cycle in count():
         # CAUTION: keep this at the start of the loop!
-        cursor.execute("pragma wal_checkpoint(truncate)")
+        # cursor.execute("pragma wal_checkpoint(truncate)")
 
         last_mid = (
             execute(cursor, "select ifnull(max(mid), 1) from Messages")
