@@ -7,6 +7,7 @@ from collections import defaultdict
 from itertools import chain, count
 from time import sleep
 import re
+import sys
 
 from tbgclient import api, Session, Page, Message
 from tbgclient.exceptions import RequestError as TBGRequestError
@@ -47,7 +48,13 @@ session.make_default()
 parser.parser_config.update(features="lxml")
 
 logger.info(f"Connecting to {DB_FILE}")
-db = sqlite3.connect(DB_FILE)
+if sys.version_info[:2] >= (3, 12):
+    # autocommit is introduced in 3.12
+    db = sqlite3.connect(DB_FILE, autocommit=False)
+else:
+    logger.warn("Cannot disable autocommit, prepare for the WAL file to grow"
+                " without bound")
+    db = sqlite3.connect(DB_FILE)
 with open("schema.sql", "r") as f:
     cursor = db.executescript(f.read())
 sqlite3.register_adapter(datetime, lambda dt: dt.isoformat(timespec='seconds'))
