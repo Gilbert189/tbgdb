@@ -322,7 +322,9 @@ def get_topic_messages(tid):  # noqa
     :param tid: The topic ID.
     :param p: If present, only show this page of results.
     """
-    page = max(request.args.get("p", None, int) - 1, 0)
+    page = request.args.get("p", None, int)
+    if page is not None:
+        page = max(1, page) - 1
 
     with init_db() as db:
         cur = db.cursor()
@@ -347,7 +349,9 @@ def get_board_topics(bid):  # noqa
     :param bid: The board ID.
     :param p: If present, only show this page of results.
     """
-    page = max(request.args.get("p", None, int) - 1, 0)
+    page = request.args.get("p", None, int)
+    if page is not None:
+        page = max(1, page) - 1
 
     with init_db() as db:
         cur = db.cursor()
@@ -384,7 +388,9 @@ def search_messages():  # noqa
     args = request.args.to_dict().get("q", "")
     if len(args) == 0:
         return {"ValueError": "at least a query is required"}, 400
-    page = max(request.args.get("p", None, int) - 1, 0)
+    page = request.args.get("p", None, int)
+    if page is not None:
+        page = max(1, page) - 1
 
     with init_db() as db:
         cur = db.cursor()
@@ -419,7 +425,9 @@ def search_topics():  # noqa
     args = request.args.to_dict().get("q", "")
     if len(args) == 0:
         return {"ValueError": "at least a query is required"}, 400
-    page = max(request.args.get("p", None, int) - 1, 0)
+    page = request.args.get("p", None, int)
+    if page is not None:
+        page = max(1, page) - 1
 
     with init_db() as db:
         cur = db.cursor()
