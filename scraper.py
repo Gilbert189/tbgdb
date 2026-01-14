@@ -98,7 +98,6 @@ def update_stats(key, value, cursor=None):  # noqa
         "insert or replace into Statistics (key, value) values (?, ?)",
         (key, value),
     )
-    db.commit()
 
 
 def update_user(user_dict, cursor=None):  # noqa
@@ -204,7 +203,6 @@ def update_msg(msg_dict, cursor=None):  # noqa
             "now": datetime.now()
         }
     )
-    db.commit()
 
 
 def get_bbc(msg_dict):  # noqa
@@ -401,7 +399,6 @@ try:
                 parsed = parser.parse_profile(res.text)
 
                 update_user(parsed, cursor=cursor)
-                db.commit()
 
         db.commit()  # CAUTION: keep this at the end of the loop!
 except Exception:
